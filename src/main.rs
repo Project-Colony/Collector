@@ -2,16 +2,14 @@ use std::error::Error;
 use std::io;
 use std::time::{Duration, Instant};
 
-use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event, KeyCode};
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Gauge, Paragraph, Row, Sparkline, Table};
+use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Row, Sparkline, Table};
 use ratatui::{Frame, Terminal};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
@@ -20,11 +18,9 @@ const PROCESS_LIMIT: usize = 10;
 const COLOR_BACKGROUND: Color = Color::Rgb(12, 12, 12);
 const COLOR_BAR_BLUE: Color = Color::Rgb(80, 160, 240);
 const COLOR_BAR_GREEN: Color = Color::Rgb(90, 200, 140);
-const COLOR_BAR_PINK: Color = Color::Rgb(240, 130, 180);
 const COLOR_BAR_YELLOW: Color = Color::Rgb(230, 200, 110);
 const COLOR_BORDER_GREEN: Color = Color::Rgb(80, 200, 120);
 const COLOR_BORDER_DIM: Color = Color::Rgb(70, 70, 70);
-const COLOR_TEXT_DIM: Color = Color::Gray;
 
 struct NetworkTotals {
     received: u64,
@@ -90,7 +86,8 @@ impl App {
     fn refresh(&mut self) {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();
-        self.system.refresh_processes(ProcessesToUpdate::All, true);
+        self.system
+            .refresh_processes(ProcessesToUpdate::All, true);
         self.disks.refresh(true);
         self.networks.refresh(true);
         self.last_tick = Instant::now();
@@ -239,7 +236,10 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("Avail ", Style::default().fg(COLOR_BAR_YELLOW)),
-            Span::raw(format!("{:.1} GB", available_memory / 1_073_741_824.0)),
+            Span::raw(format!(
+                "{:.1} GB",
+                available_memory / 1_073_741_824.0
+            )),
         ]),
     ];
     let memory_details = Paragraph::new(memory_lines).block(
@@ -309,20 +309,9 @@ fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
 
     let rows = processes.into_iter().take(PROCESS_LIMIT).map(|process| {
         Row::new(vec![
-            Cell::from(Span::styled(
-                process.name().to_string_lossy().into_owned(),
-                Style::default().fg(COLOR_TEXT_DIM),
-            )),
-            Cell::from(Span::styled(
-                format!("{:.1}%", process.cpu_usage()),
-                Style::default().fg(COLOR_BAR_GREEN),
-            ))
-            .alignment(Alignment::Right),
-            Cell::from(Span::styled(
-                format!("{:.1} MB", process.memory() as f64 / 1_048_576.0),
-                Style::default().fg(COLOR_BAR_BLUE),
-            ))
-            .alignment(Alignment::Right),
+            process.name().to_string_lossy().into_owned(),
+            format!("{:.1}%", process.cpu_usage()),
+            format!("{:.1} MB", process.memory() as f64 / 1_048_576.0),
         ])
     });
 
@@ -334,13 +323,7 @@ fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Percentage(25),
         ],
     )
-    .header(Row::new(vec![
-        Cell::from(Span::styled("Process", Style::default().fg(COLOR_TEXT_DIM))),
-        Cell::from(Span::styled("CPU", Style::default().fg(COLOR_BAR_YELLOW)))
-            .alignment(Alignment::Right),
-        Cell::from(Span::styled("Memory", Style::default().fg(COLOR_BAR_PINK)))
-            .alignment(Alignment::Right),
-    ]))
+    .header(Row::new(vec!["Process", "CPU", "Memory"]).style(Style::default().fg(COLOR_BAR_GREEN)))
     .block(
         Block::default()
             .title("Top Processes")
