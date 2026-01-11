@@ -15,6 +15,12 @@ use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
 const TICK_RATE: Duration = Duration::from_millis(1000);
 const PROCESS_LIMIT: usize = 10;
+const COLOR_BACKGROUND: Color = Color::Rgb(12, 12, 12);
+const COLOR_BAR_BLUE: Color = Color::Rgb(80, 160, 240);
+const COLOR_BAR_GREEN: Color = Color::Rgb(90, 200, 140);
+const COLOR_BAR_YELLOW: Color = Color::Rgb(230, 200, 110);
+const COLOR_BORDER_GREEN: Color = Color::Rgb(80, 200, 120);
+const COLOR_BORDER_DIM: Color = Color::Rgb(70, 70, 70);
 
 struct NetworkTotals {
     received: u64,
@@ -151,8 +157,14 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
 
     let cpu_usage = app.system.global_cpu_usage();
     let cpu_gauge = Gauge::default()
-        .block(Block::default().title("CPU").borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Cyan))
+        .block(
+            Block::default()
+                .title("CPU")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER_GREEN))
+                .style(Style::default().bg(COLOR_BACKGROUND)),
+        )
+        .gauge_style(Style::default().fg(COLOR_BAR_BLUE))
         .percent(cpu_usage.round() as u16);
     frame.render_widget(cpu_gauge, layout[0]);
 
@@ -165,8 +177,14 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let memory_gauge = Gauge::default()
-        .block(Block::default().title("Memory").borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Magenta))
+        .block(
+            Block::default()
+                .title("Memory")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER_GREEN))
+                .style(Style::default().bg(COLOR_BACKGROUND)),
+        )
+        .gauge_style(Style::default().fg(COLOR_BAR_GREEN))
         .percent(memory_percent.round() as u16)
         .label(format!(
             "{:.1} / {:.1} GB",
@@ -192,7 +210,7 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
             Line::from(vec![
                 Span::styled(
                     format!("{} ", disk.name().to_string_lossy()),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(COLOR_BAR_YELLOW),
                 ),
                 Span::raw(format!(
                     "{:.1}/{:.1} GB",
@@ -203,7 +221,13 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let disk_block = Paragraph::new(disk_lines).block(Block::default().title("Disks").borders(Borders::ALL));
+    let disk_block = Paragraph::new(disk_lines).block(
+        Block::default()
+            .title("Disks")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(COLOR_BORDER_DIM))
+            .style(Style::default().bg(COLOR_BACKGROUND)),
+    );
     frame.render_widget(disk_block, layout[0]);
 
     let (rx, tx) = app.network_delta();
@@ -212,7 +236,13 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("TX: {:.1} KB/s", tx as f64 / 1024.0)),
         Line::from("Press q to quit"),
     ];
-    let net_block = Paragraph::new(net_lines).block(Block::default().title("Network").borders(Borders::ALL));
+    let net_block = Paragraph::new(net_lines).block(
+        Block::default()
+            .title("Network")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(COLOR_BORDER_DIM))
+            .style(Style::default().bg(COLOR_BACKGROUND)),
+    );
     frame.render_widget(net_block, layout[1]);
 }
 
@@ -236,8 +266,14 @@ fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Percentage(25),
         ],
     )
-    .header(Row::new(vec!["Process", "CPU", "Memory"]).style(Style::default().fg(Color::Green)))
-    .block(Block::default().title("Top Processes").borders(Borders::ALL));
+    .header(Row::new(vec!["Process", "CPU", "Memory"]).style(Style::default().fg(COLOR_BAR_GREEN)))
+    .block(
+        Block::default()
+            .title("Top Processes")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(COLOR_BORDER_GREEN))
+            .style(Style::default().bg(COLOR_BACKGROUND)),
+    );
 
     frame.render_widget(table, area);
 }
