@@ -9,7 +9,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Row, Sparkline, Table};
+use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Row, Table};
 use ratatui::{Frame, Terminal};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
@@ -55,7 +55,6 @@ struct App {
     networks: Networks,
     last_network: NetworkTotals,
     last_tick: Instant,
-    cpu_history: Vec<u64>,
 }
 
 impl App {
@@ -71,15 +70,12 @@ impl App {
 
         let last_network = NetworkTotals::from_networks(&networks);
 
-        let cpu_history = vec![system.global_cpu_usage().round() as u64];
-
         Self {
             system,
             disks,
             networks,
             last_network,
             last_tick: Instant::now(),
-            cpu_history,
         }
     }
 
@@ -91,17 +87,6 @@ impl App {
         self.disks.refresh(true);
         self.networks.refresh(true);
         self.last_tick = Instant::now();
-        self.push_cpu_history();
-    }
-
-    fn push_cpu_history(&mut self) {
-        const HISTORY_LIMIT: usize = 60;
-        let usage = self.system.global_cpu_usage().round() as u64;
-        self.cpu_history.push(usage);
-        if self.cpu_history.len() > HISTORY_LIMIT {
-            let overflow = self.cpu_history.len() - HISTORY_LIMIT;
-            self.cpu_history.drain(0..overflow);
-        }
     }
 
     fn network_delta(&mut self) -> (u64, u64) {
@@ -153,9 +138,9 @@ fn render_ui(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(6),
-            Constraint::Length(6),
-            Constraint::Min(8),
+            Constraint::Length(7),
+            Constraint::Length(7),
+            Constraint::Min(10),
         ])
         .split(frame.area());
 
@@ -171,32 +156,17 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let cpu_usage = app.system.global_cpu_usage();
-    let cpu_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(layout[0]);
-
-    let cpu_history_block = Block::default()
-        .title("CPU")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(COLOR_BORDER_GREEN))
-        .style(Style::default().bg(COLOR_BACKGROUND));
-    let cpu_history = Sparkline::default()
-        .block(cpu_history_block)
-        .data(&app.cpu_history)
-        .style(Style::default().fg(COLOR_BAR_BLUE));
-    frame.render_widget(cpu_history, cpu_layout[0]);
-
     let cpu_gauge = Gauge::default()
         .block(
             Block::default()
+                .title("CPU")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(COLOR_BORDER_GREEN))
                 .style(Style::default().bg(COLOR_BACKGROUND)),
         )
         .gauge_style(Style::default().fg(COLOR_BAR_BLUE))
         .percent(cpu_usage.round() as u16);
-    frame.render_widget(cpu_gauge, cpu_layout[1]);
+    frame.render_widget(cpu_gauge, layout[0]);
 
     let total_memory = app.system.total_memory() as f64;
     let used_memory = app.system.used_memory() as f64;
@@ -205,11 +175,6 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         0.0
     };
-
-    let memory_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Min(0)])
-        .split(layout[1]);
 
     let memory_gauge = Gauge::default()
         .block(
@@ -220,35 +185,13 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
                 .style(Style::default().bg(COLOR_BACKGROUND)),
         )
         .gauge_style(Style::default().fg(COLOR_BAR_GREEN))
-        .percent(memory_percent.round() as u16);
-    frame.render_widget(memory_gauge, memory_layout[0]);
-
-    let free_memory = app.system.free_memory() as f64;
-    let available_memory = app.system.available_memory() as f64;
-    let memory_lines = vec![
-        Line::from(vec![
-            Span::styled("Used ", Style::default().fg(COLOR_BAR_GREEN)),
-            Span::raw(format!("{:.1} GB", used_memory / 1_073_741_824.0)),
-        ]),
-        Line::from(vec![
-            Span::styled("Free ", Style::default().fg(COLOR_BAR_BLUE)),
-            Span::raw(format!("{:.1} GB", free_memory / 1_073_741_824.0)),
-        ]),
-        Line::from(vec![
-            Span::styled("Avail ", Style::default().fg(COLOR_BAR_YELLOW)),
-            Span::raw(format!(
-                "{:.1} GB",
-                available_memory / 1_073_741_824.0
-            )),
-        ]),
-    ];
-    let memory_details = Paragraph::new(memory_lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(COLOR_BORDER_GREEN))
-            .style(Style::default().bg(COLOR_BACKGROUND)),
-    );
-    frame.render_widget(memory_details, memory_layout[1]);
+        .percent(memory_percent.round() as u16)
+        .label(format!(
+            "{:.1} / {:.1} GB",
+            used_memory / 1_073_741_824.0,
+            total_memory / 1_073_741_824.0
+        ));
+    frame.render_widget(memory_gauge, layout[1]);
 }
 
 fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
