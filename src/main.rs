@@ -2,9 +2,11 @@ use std::error::Error;
 use std::io;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
+use crossterm::event::{self, Event, KeyCode};
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -76,8 +78,7 @@ impl App {
     fn refresh(&mut self) {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();
-        self.system
-            .refresh_processes(ProcessesToUpdate::All, true);
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
         self.disks.refresh(true);
         self.networks.refresh(true);
         self.last_tick = Instant::now();
@@ -203,7 +204,8 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let disk_block = Paragraph::new(disk_lines).block(Block::default().title("Disks").borders(Borders::ALL));
+    let disk_block =
+        Paragraph::new(disk_lines).block(Block::default().title("Disks").borders(Borders::ALL));
     frame.render_widget(disk_block, layout[0]);
 
     let (rx, tx) = app.network_delta();
@@ -212,18 +214,25 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("TX: {:.1} KB/s", tx as f64 / 1024.0)),
         Line::from("Press q to quit"),
     ];
-    let net_block = Paragraph::new(net_lines).block(Block::default().title("Network").borders(Borders::ALL));
+    let net_block =
+        Paragraph::new(net_lines).block(Block::default().title("Network").borders(Borders::ALL));
     frame.render_widget(net_block, layout[1]);
 }
 
 fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
     let mut processes: Vec<_> = app.system.processes().values().collect();
-    processes.sort_by(|a, b| b.cpu_usage().total_cmp(&a.cpu_usage()));
+    let cpu_count = app.system.cpus().len().max(1) as f32;
+    processes.sort_by(|a, b| {
+        let a_usage = a.cpu_usage() / cpu_count;
+        let b_usage = b.cpu_usage() / cpu_count;
+        b_usage.total_cmp(&a_usage)
+    });
 
     let rows = processes.into_iter().take(PROCESS_LIMIT).map(|process| {
+        let cpu_usage = process.cpu_usage() / cpu_count;
         Row::new(vec![
             process.name().to_string_lossy().into_owned(),
-            format!("{:.1}%", process.cpu_usage()),
+            format!("{:.1}%", cpu_usage),
             format!("{:.1} MB", process.memory() as f64 / 1_048_576.0),
         ])
     });
@@ -237,7 +246,11 @@ fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(Row::new(vec!["Process", "CPU", "Memory"]).style(Style::default().fg(Color::Green)))
-    .block(Block::default().title("Top Processes").borders(Borders::ALL));
+    .block(
+        Block::default()
+            .title("Top Processes")
+            .borders(Borders::ALL),
+    );
 
     frame.render_widget(table, area);
 }
