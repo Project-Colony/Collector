@@ -2,8 +2,41 @@
 name = "collector"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Terminal system monitor: CPU, memory, disks, network and processes"
+repository = "https://github.com/Project-Colony/Collector"
+# sysinfo 0.39.6's own floor. CI builds on it (the msrv job), so the promise
+# is checked rather than guessed.
+rust-version = "1.95"
 
 [dependencies]
-ratatui = "0.30.0"
+ratatui = "0.30.2"
 crossterm = "0.29.0"
-sysinfo = "0.37.2"
+# No default features: they add `component` and `user`, which Collector does
+# not use (on Windows, `component` brings in WMI and COM).
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network"] }
+
+# The Windows version resource, written by build.rs. Not target-specific: a
+# build dependency's cfg is the host's, and a Linux host building for Windows
+# needs it too. No default features: they only add a TOML parser for reading
+# [package.metadata.winresource], which build.rs does not use.
+[build-dependencies]
+winresource = { version = "0.1.31", default-features = false }
+
+[dev-dependencies]
+portable-pty = "0.9.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# Release-level optimisation with fast rebuilds, for development:
+# `cargo run --profile fast`.
+[profile.fast]
+inherits = "release"
+debug = "line-tables-only"
+incremental = true
+lto = false
+codegen-units = 16
+strip = false

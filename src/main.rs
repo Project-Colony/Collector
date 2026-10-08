@@ -1,12 +1,16 @@
 use std::error::Error;
-use std::io;
+use std::ffi::OsString;
+use std::io::{self, IsTerminal};
+use std::process::ExitCode;
 use std::time::{Duration, Instant};
+use std::{env, panic};
 
-use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::cursor::Show;
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use crossterm::{ExecutableCommand, execute};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
@@ -17,39 +21,33 @@ use sysinfo::{Disks, Networks, ProcessesToUpdate, System};
 
 const TICK_RATE: Duration = Duration::from_millis(1000);
 const PROCESS_LIMIT: usize = 10;
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const USAGE: &str = "\
+Usage: collector [OPTION]
 
-struct NetworkTotals {
-    received: u64,
-    transmitted: u64,
-}
+A terminal system monitor: CPU, memory, disks, network and processes.
 
-impl NetworkTotals {
-    fn from_networks(networks: &Networks) -> Self {
-        let mut received = 0;
-        let mut transmitted = 0;
-        for (_name, data) in networks.iter() {
-            received += data.received();
-            transmitted += data.transmitted();
-        }
-        Self {
-            received,
-            transmitted,
-        }
-    }
+Options:
+  -h, --help     Print this help and exit
+  -V, --version  Print the version and exit
 
-    fn delta(&self, newer: &NetworkTotals) -> (u64, u64) {
-        (
-            newer.received.saturating_sub(self.received),
-            newer.transmitted.saturating_sub(self.transmitted),
-        )
-    }
+Keys: q or Ctrl+C quits.
+";
+
+/// `bytes` moved over `elapsed`, per second. sysinfo's `received()` and
+/// `transmitted()` already count from the previous refresh, and a key press
+/// refreshes early, so the interval is measured rather than assumed.
+fn per_second(bytes: u64, elapsed: Duration) -> f64 {
+    let secs = elapsed.as_secs_f64();
+    if secs > 0.0 { bytes as f64 / secs } else { 0.0 }
 }
 
 struct App {
     system: System,
     disks: Disks,
     networks: Networks,
-    last_network: NetworkTotals,
+    /// Bytes received and transmitted per second, all interfaces together.
+    network_rate: (f64, f64),
     last_tick: Instant,
 }
 
@@ -64,13 +62,11 @@ impl App {
         let mut networks = Networks::new_with_refreshed_list();
         networks.refresh(true);
 
-        let last_network = NetworkTotals::from_networks(&networks);
-
         Self {
             system,
             disks,
             networks,
-            last_network,
+            network_rate: (0.0, 0.0),
             last_tick: Instant::now(),
         }
     }
@@ -81,31 +77,107 @@ impl App {
         self.system.refresh_processes(ProcessesToUpdate::All, true);
         self.disks.refresh(true);
         self.networks.refresh(true);
-        self.last_tick = Instant::now();
-    }
-
-    fn network_delta(&mut self) -> (u64, u64) {
-        let current = NetworkTotals::from_networks(&self.networks);
-        let delta = self.last_network.delta(&current);
-        self.last_network = current;
-        delta
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_tick);
+        let (rx, tx) = self.networks.values().fold((0, 0), |(rx, tx), data| {
+            (rx + data.received(), tx + data.transmitted())
+        });
+        self.network_rate = (per_second(rx, elapsed), per_second(tx, elapsed));
+        self.last_tick = now;
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+enum Mode {
+    Run,
+    Help,
+    Version,
+}
+
+/// Parsed by hand, before the terminal is touched, so `--version` and `--help`
+/// work with no TTY at all (the release smoke test runs `--version` headless).
+/// Returns the offending argument on error.
+fn parse_args(args: &[OsString]) -> Result<Mode, String> {
+    let mode = match args.first().map(|arg| arg.to_str()) {
+        None => return Ok(Mode::Run),
+        Some(Some("-h" | "--help")) => Mode::Help,
+        Some(Some("-V" | "--version")) => Mode::Version,
+        Some(_) => return Err(args[0].to_string_lossy().into_owned()),
+    };
+    match args.get(1) {
+        None => Ok(mode),
+        Some(extra) => Err(extra.to_string_lossy().into_owned()),
+    }
+}
+
+fn main() -> ExitCode {
+    let args: Vec<OsString> = env::args_os().skip(1).collect();
+    match parse_args(&args) {
+        Ok(Mode::Run) => {}
+        Ok(Mode::Version) => {
+            println!("collector {VERSION}");
+            return ExitCode::SUCCESS;
+        }
+        Ok(Mode::Help) => {
+            print!("collector {VERSION}\n\n{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Err(arg) => {
+            eprint!("collector: unexpected argument '{arg}'\n\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    }
+
+    // Redirected output, a pipe or `ssh host collector` without -t: drawing
+    // there would only fill a file or a pipe with escape sequences.
+    if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+        eprintln!("Collector needs a terminal (with ssh, use ssh -t)");
+        return ExitCode::from(1);
+    }
+
+    // A panic would otherwise print into the alternate screen, which the
+    // terminal then throws away, and leave the shell in raw mode with no
+    // cursor. Restore first, then let the default hook print the message.
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let _ = restore_terminal();
+        default_hook(info);
+    }));
+
+    let result = run();
+    let restored = restore_terminal();
+    match result.and(restored.map_err(Into::into)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("collector: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Leaves the alternate screen, shows the cursor and turns raw mode off. Safe
+/// to run more than once, and from the panic hook.
+fn restore_terminal() -> io::Result<()> {
+    let raw = disable_raw_mode();
+    execute!(io::stdout(), LeaveAlternateScreen, Show)?;
+    raw
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    stdout.execute(EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    io::stdout().execute(EnterAlternateScreen)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+    run_app(&mut terminal)
+}
 
-    let result = run_app(&mut terminal);
-
-    disable_raw_mode()?;
-    terminal.backend_mut().execute(LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
-    result
+/// Only presses count: Windows also reports key releases, so without this
+/// filter every key arrived twice. In raw mode Ctrl+C is a key, not a signal.
+fn is_quit(key: &KeyEvent) -> bool {
+    key.kind == KeyEventKind::Press
+        && match key.code {
+            KeyCode::Char('q') => true,
+            KeyCode::Char('c') => key.modifiers.contains(KeyModifiers::CONTROL),
+            _ => false,
+        }
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn Error>> {
@@ -113,22 +185,21 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
 
     loop {
         app.refresh();
-        terminal.draw(|frame| render_ui(frame, &mut app))?;
+        terminal.draw(|frame| render_ui(frame, &app))?;
 
         let timeout = TICK_RATE.saturating_sub(app.last_tick.elapsed());
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    break;
-                }
-            }
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
+            && is_quit(&key)
+        {
+            break;
         }
     }
 
     Ok(())
 }
 
-fn render_ui(frame: &mut Frame, app: &mut App) {
+fn render_ui(frame: &mut Frame, app: &App) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -177,7 +248,7 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(memory_gauge, layout[1]);
 }
 
-fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
+fn render_disk_network(frame: &mut Frame, app: &App, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
@@ -208,11 +279,11 @@ fn render_disk_network(frame: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(disk_lines).block(Block::default().title("Disks").borders(Borders::ALL));
     frame.render_widget(disk_block, layout[0]);
 
-    let (rx, tx) = app.network_delta();
+    let (rx, tx) = app.network_rate;
     let net_lines = vec![
-        Line::from(format!("RX: {:.1} KB/s", rx as f64 / 1024.0)),
-        Line::from(format!("TX: {:.1} KB/s", tx as f64 / 1024.0)),
-        Line::from("Press q to quit"),
+        Line::from(format!("RX: {:.1} KB/s", rx / 1024.0)),
+        Line::from(format!("TX: {:.1} KB/s", tx / 1024.0)),
+        Line::from("q or Ctrl+C to quit"),
     ];
     let net_block =
         Paragraph::new(net_lines).block(Block::default().title("Network").borders(Borders::ALL));
@@ -253,4 +324,30 @@ fn render_processes(frame: &mut Frame, app: &App, area: Rect) {
     );
 
     frame.render_widget(table, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_key_presses_quit() {
+        let press = |code, modifiers| KeyEvent::new(code, modifiers);
+        assert!(is_quit(&press(KeyCode::Char('q'), KeyModifiers::NONE)));
+        assert!(is_quit(&press(KeyCode::Char('c'), KeyModifiers::CONTROL)));
+        assert!(!is_quit(&press(KeyCode::Char('c'), KeyModifiers::NONE)));
+
+        let release = KeyEvent::new_with_kind(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE,
+            KeyEventKind::Release,
+        );
+        assert!(!is_quit(&release));
+    }
+
+    #[test]
+    fn network_rate_is_per_second() {
+        assert_eq!(per_second(2048, Duration::from_millis(500)), 4096.0);
+        assert_eq!(per_second(2048, Duration::ZERO), 0.0);
+    }
 }

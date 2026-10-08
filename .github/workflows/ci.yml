@@ -1,0 +1,196 @@
+# Collector - pull request checks
+#
+# The release workflow builds only once release-please has cut a tag, so
+# anything that breaks the build, the tests or a budget has to be caught here,
+# before it reaches main.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push to the same branch obsoletes the running checks.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ci-${{ matrix.os }}
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      # --all-targets, or clippy never sees the tests.
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # Includes tests/pty_smoke.rs: the real binary in a pseudo-terminal
+      # (ConPTY on Windows), quit with q, exit status 0.
+      - name: Test
+        run: cargo test --locked
+
+      # Same check as the release workflow's Windows leg: SignPath signs only
+      # an .exe whose version resource names the project and carries its
+      # version, and build.rs is what writes it. `cargo test` has just built
+      # target\debug\collector.exe for the integration tests.
+      - name: Check the Windows version resource
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
+            Where-Object name -eq 'collector' | ForEach-Object version
+          $info = (Get-Item target\debug\collector.exe).VersionInfo
+          "ProductName='$($info.ProductName)' ProductVersion='$($info.ProductVersion)' FileVersion='$($info.FileVersion)'"
+          if ($info.ProductName -cne 'Collector' -or $info.ProductVersion -cne $version) {
+            "::error::collector.exe has ProductName '$($info.ProductName)' and ProductVersion '$($info.ProductVersion)', expected 'Collector' and '$version'"
+            exit 1
+          }
+
+  # Cargo.toml promises a rust-version; an untested floor is a guess. Linux
+  # only: the floor is sysinfo's, declared for the whole crate, and the crates
+  # that only macOS or Windows pull in ask for Rust 1.82 at most.
+  msrv:
+    name: minimum supported Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the declared rust-version
+        id: msrv
+        shell: bash
+        run: |
+          version=$(grep '^rust-version' Cargo.toml | tr -d ' "' | cut -d= -f2)
+          [ -n "$version" ] || { echo "::error::could not read rust-version from Cargo.toml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: msrv-${{ steps.msrv.outputs.version }}
+
+      - name: Build on the declared floor
+        run: cargo check --locked
+
+  # Gating. An advisory that cannot be acted on from this repository is
+  # ignored by ID with the reason written next to it (`ignore:` below), never
+  # by turning the job off.
+  audit:
+    name: advisories
+    runs-on: ubuntu-latest
+    # audit-check reports through a check run, which a read-only token cannot
+    # create.
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # audit-check runs the cargo-audit it finds on PATH and only compiles
+      # one from source (about six minutes) when there is none. This one is
+      # the prebuilt RustSec binary, checked against a pinned SHA-256.
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-audit
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  manifest:
+    name: colony.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A wrong category files the program nowhere in Colony, silently. The
+      # published schema catches that in seconds.
+      - name: Validate against the published schema
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          schema = json.load(urllib.request.urlopen(
+              "https://raw.githubusercontent.com/Project-Colony/"
+              "Project-Colony-Resources/main/generated/colony.schema.json"))
+          manifest = json.load(open("colony.json"))
+          for key in schema.get("required", []):
+              assert key in manifest, f"colony.json is missing the required key {key!r}"
+          if schema.get("additionalProperties") is False:
+              unknown = set(manifest) - set(schema["properties"]) - {"$schema"}
+              assert not unknown, f"colony.json has keys the schema does not know: {sorted(unknown)}"
+          category = schema["properties"]["category"].get("enum")
+          if category:
+              assert manifest["category"] in category, (
+                  f"category {manifest['category']!r} is not one of {category}")
+          icon = manifest.get("icon")
+          if icon:
+              import os
+              assert os.path.exists(icon), f"colony.json points at a missing icon: {icon}"
+          print("colony.json is valid")
+          PY
+
+  # Budgets from the design: the stripped Linux x86_64 release binary stays at
+  # or under 3 MB, built exactly as the release workflow builds it.
+  size:
+    name: binary size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+
+      - name: Build the release binary
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu
+
+      - name: Check the size
+        run: |
+          limit=3000000
+          size=$(stat -c %s target/x86_64-unknown-linux-gnu/release/collector)
+          echo "collector-linux: $size bytes (limit $limit)"
+          [ "$size" -le "$limit" ] || { echo "::error::collector-linux is $size bytes, over the $limit-byte budget"; exit 1; }
+
+  # The Linux dependency tree, root crate included, stays at or under 82
+  # crates: each name and version counted once, normal dependencies only.
+  crates:
+    name: crate count
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch
+
+      # bash rather than the default `bash -e`: with pipefail, a failing
+      # cargo tree fails the step instead of counting 0 crates.
+      - name: Count the Linux dependency tree
+        shell: bash
+        run: |
+          limit=82
+          count=$(cargo tree --locked -e normal --target x86_64-unknown-linux-gnu --prefix none \
+            | awk '{print $1, $2}' | sort -u | wc -l)
+          echo "Linux dependency tree: $count crates (limit $limit)"
+          [ "$count" -le "$limit" ] || { echo "::error::$count crates in the Linux dependency tree, over the limit of $limit"; exit 1; }
