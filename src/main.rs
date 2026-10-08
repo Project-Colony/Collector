@@ -35,8 +35,8 @@ Keys: q or Ctrl+C quits.
 ";
 
 /// `bytes` moved over `elapsed`, per second. sysinfo's `received()` and
-/// `transmitted()` already count from the previous refresh, and a key press
-/// refreshes early, so the interval is measured rather than assumed.
+/// `transmitted()` already count from the previous refresh, and drawing takes
+/// time too, so the interval is measured rather than assumed.
 fn per_second(bytes: u64, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
     if secs > 0.0 { bytes as f64 / secs } else { 0.0 }
@@ -184,7 +184,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), 
     let mut app = App::new();
 
     loop {
-        app.refresh();
+        // Only on the tick: any other event (a held key, a key release on
+        // Windows, a resize) just redraws. Refreshing on each one rescanned
+        // every process many times a second and sampled CPU usage over
+        // intervals too short to mean anything.
+        if app.last_tick.elapsed() >= TICK_RATE {
+            app.refresh();
+        }
         terminal.draw(|frame| render_ui(frame, &app))?;
 
         let timeout = TICK_RATE.saturating_sub(app.last_tick.elapsed());
