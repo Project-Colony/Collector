@@ -30,8 +30,9 @@ release-please and the shared signing workflow of
 4. Four build legs check out the tag and build with `--locked` and no cache:
    `collector-linux`, `collector-windows.exe`, `collector-macos` (Apple
    Silicon) and `collector-macos-x86` (Intel). Each is smoke-tested with
-   `--version` (the Intel build, cross-compiled, has its architecture checked
-   instead), the Windows build has its version resource checked, and
+   `--version`, which must print the tag's version (the Intel build,
+   cross-compiled, has its architecture checked instead), the Windows build
+   has its version resource checked, and
    `colony.json` is validated against the asset names.
 5. The shared `sign-and-publish` workflow signs and publishes, in the same
    run: Authenticode through SignPath for the Windows file once SignPath has

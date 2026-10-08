@@ -163,13 +163,22 @@ jobs:
       # binary RUNS. An artefact built for the wrong architecture, or one that
       # aborts under the release profile's LTO, would otherwise be signed,
       # published and installed with every check green. `--version` needs no
-      # terminal, so it runs headless here.
+      # terminal, so it runs headless here. It must also print the tag's
+      # version: the .meta sidecar binds these bytes to that version.
       - name: Smoke-test the artifact
         if: matrix.target != 'x86_64-apple-darwin'
         shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+          TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
         run: |
-          chmod +x "${{ matrix.asset }}" || true
-          "./${{ matrix.asset }}" --version
+          chmod +x "$ASSET" || true
+          out="$(./"$ASSET" --version)"
+          echo "$out"
+          if [ "$out" != "collector ${TAG#v}" ]; then
+            echo "::error::$ASSET --version printed '$out', expected 'collector ${TAG#v}'"
+            exit 1
+          fi
 
       # SignPath signs only an .exe whose version resource names the project
       # and carries its version (build.rs writes it). A build that lost either
