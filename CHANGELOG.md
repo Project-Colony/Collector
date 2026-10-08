@@ -1,11 +1,11 @@
 # Changelog
 
-## [0.2.0](https://github.com/Project-Colony/Collector/compare/v0.1.0...v0.2.0) (2026-10-08)
+## [0.2.0](https://github.com/Project-Colony/Collector/releases/tag/v0.2.0) (2026-10-08)
 
 
 ### Features
 
-* add --help, --version and Ctrl+C, restore the terminal on panic, and ship signed releases ([#13](https://github.com/Project-Colony/Collector/issues/13)) ([359363f](https://github.com/Project-Colony/Collector/commit/359363fef60d3c3c69d16858fb8f4288d5ce8059))
+* add --help, --version and Ctrl+C, restore the terminal on panic, and ship signed releases ([359363f](https://github.com/Project-Colony/Collector/commit/359363fef60d3c3c69d16858fb8f4288d5ce8059))
 
 
 ### Fixes

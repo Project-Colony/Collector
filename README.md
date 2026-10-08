@@ -18,8 +18,8 @@ updated through Colony, that runs the same on Linux, Windows and macOS,
 locally, over SSH or inside tmux.
 
 > **Status:** today's minimal monitor is used by hand on Linux and passes its
-> tests, including a pseudo-terminal run, on Windows and macOS in CI. No
-> release exists yet: the signed release pipeline is wired but has never run.
+> tests, including a pseudo-terminal run, on Windows and macOS in CI. 0.2.0
+> is the first release, and Colony installs it only with a valid signature.
 > A btop-class rewrite is in progress (see the [roadmap](#roadmap) below).
 > Known gaps until then: the RX/TX rates count the loopback interface, disks
 > are listed by device name rather than mount point, and the process list
