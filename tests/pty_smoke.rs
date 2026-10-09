@@ -1,14 +1,16 @@
 //! Runs the real binary in a pseudo-terminal (ConPTY on Windows), waits for
-//! the first frame, presses q and checks that Collector exits cleanly and, on
-//! Unix, hands the terminal back the way it found it: same escape sequences
-//! last, same line discipline (raw mode off).
+//! the first frame, quits it (q, or SIGTERM on Unix) and checks that Collector
+//! exits and, on Unix, hands the terminal back the way it found it: same
+//! escape sequences last, same line discipline (raw mode off).
 
 use std::io::{Read, Write};
+#[cfg(unix)]
+use std::process::Command;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, ExitStatus, PtySize, native_pty_system};
 
 /// Generous on purpose: this is a smoke test, not a benchmark, and a cold CI
 /// runner can take seconds over the first full process scan.
@@ -69,8 +71,11 @@ fn count(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
-#[test]
-fn quits_on_q_and_restores_the_terminal() {
+/// Starts Collector, waits for its first frame, calls `quit` with the output
+/// and Collector's process ID, and waits for Collector to exit. On Unix it
+/// also checks that the terminal was restored. `how` names the quit action
+/// in failure messages.
+fn run_and_quit(how: &str, quit: impl FnOnce(&mut Output, Option<u32>)) -> (ExitStatus, Output) {
     let pair = native_pty_system()
         .openpty(PtySize {
             rows: 40,
@@ -122,8 +127,7 @@ fn quits_on_q_and_restores_the_terminal() {
         }
     }
 
-    out.writer.write_all(b"q").expect("press q");
-    out.writer.flush().expect("press q");
+    quit(&mut out, child.process_id());
 
     let deadline = Instant::now() + EXIT_TIMEOUT;
     let status = loop {
@@ -133,7 +137,7 @@ fn quits_on_q_and_restores_the_terminal() {
         if Instant::now() > deadline {
             let _ = child.kill();
             panic!(
-                "still running {EXIT_TIMEOUT:?} after q; output ends with:\n{}",
+                "still running {EXIT_TIMEOUT:?} after {how}; output ends with:\n{}",
                 out.tail()
             );
         }
@@ -150,18 +154,52 @@ fn quits_on_q_and_restores_the_terminal() {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline && out.pump(Duration::from_millis(100)) {}
 
+    if cfg!(unix) {
+        assert!(
+            out.bytes.ends_with(RESTORE),
+            "the terminal was not restored last after {how} (exited with {status}); \
+             output ends with:\n{}",
+            out.tail()
+        );
+    }
+    #[cfg(unix)]
+    assert_eq!(
+        modes_after,
+        Some(modes_before),
+        "raw mode was left on after {how}"
+    );
+    (status, out)
+}
+
+#[test]
+fn quits_on_q_and_restores_the_terminal() {
+    let (status, out) = run_and_quit("q", |out, _| {
+        out.writer.write_all(b"q").expect("press q");
+        out.writer.flush().expect("press q");
+    });
     assert!(
         status.success(),
         "exited with {status}; output ends with:\n{}",
         out.tail()
     );
-    if cfg!(unix) {
-        assert!(
-            out.bytes.ends_with(RESTORE),
-            "the terminal was not restored last; output ends with:\n{}",
-            out.tail()
-        );
-    }
-    #[cfg(unix)]
-    assert_eq!(modes_after, Some(modes_before), "raw mode was left on");
+}
+
+/// A service manager, `timeout` or a closing ssh session quits with a signal,
+/// not a key. Collector restores the terminal first, then dies of the signal.
+#[cfg(unix)]
+#[test]
+fn restores_the_terminal_on_sigterm() {
+    let (status, out) = run_and_quit("SIGTERM", |_, pid| {
+        let pid = pid.expect("collector's process ID");
+        let sent = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .expect("run kill");
+        assert!(sent.success(), "kill -TERM {pid} failed with {sent}");
+    });
+    assert!(
+        status.signal().is_some(),
+        "exited with {status} instead of dying of SIGTERM; output ends with:\n{}",
+        out.tail()
+    );
 }

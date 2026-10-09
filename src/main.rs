@@ -2,6 +2,8 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::io::{self, IsTerminal};
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use std::{env, panic};
 
@@ -40,6 +42,17 @@ Keys: q or Ctrl+C quits.
 fn per_second(bytes: u64, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
     if secs > 0.0 { bytes as f64 / secs } else { 0.0 }
+}
+
+/// A reading as a gauge percentage. `Gauge::percent` panics above 100, and a
+/// reading can go over: used memory can exceed the total under cgroup
+/// accounting, and a cast alone would turn a huge value into 65535.
+fn gauge_percent(value: f64) -> u16 {
+    if value.is_finite() {
+        value.round().clamp(0.0, 100.0) as u16
+    } else {
+        0
+    }
 }
 
 struct App {
@@ -143,14 +156,42 @@ fn main() -> ExitCode {
         default_hook(info);
     }));
 
-    let result = run();
-    let restored = restore_terminal();
-    match result.and(restored.map_err(Into::into)) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("collector: {err}");
-            ExitCode::FAILURE
+    // A quit signal from outside stores its number here instead of killing
+    // Collector on the spot; the event loop sees it within a tick and returns,
+    // so the terminal is restored below. In raw mode Ctrl+C is a key, not a
+    // signal, so SIGINT only comes from another process.
+    let quit_signal = Arc::new(AtomicUsize::new(0));
+    #[cfg(unix)]
+    {
+        use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
+        for signal in [SIGTERM, SIGHUP, SIGINT, SIGQUIT] {
+            let flag = Arc::clone(&quit_signal);
+            if let Err(err) = signal_hook::flag::register_usize(signal, flag, signal as usize) {
+                eprintln!("collector: cannot handle signal {signal}: {err}");
+                return ExitCode::FAILURE;
+            }
         }
+    }
+
+    let result = run(&quit_signal);
+    let restored = restore_terminal();
+    let result = result.and(restored.map_err(Into::into));
+    if let Err(err) = &result {
+        eprintln!("collector: {err}");
+    }
+
+    // The terminal is back: now die of the signal, as its sender expects (a
+    // shell reports 128 + its number). The exit code is only a fallback.
+    #[cfg(unix)]
+    if let signal @ 1.. = quit_signal.load(Ordering::SeqCst) {
+        let signal = signal as i32;
+        let _ = signal_hook::low_level::emulate_default_handler(signal);
+        return ExitCode::from(128 + signal as u8);
+    }
+    if result.is_ok() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 
@@ -162,11 +203,11 @@ fn restore_terminal() -> io::Result<()> {
     raw
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
+fn run(quit_signal: &AtomicUsize) -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-    run_app(&mut terminal)
+    run_app(&mut terminal, quit_signal)
 }
 
 /// Only presses count: Windows also reports key releases, so without this
@@ -180,10 +221,14 @@ fn is_quit(key: &KeyEvent) -> bool {
         }
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn Error>> {
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    quit_signal: &AtomicUsize,
+) -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
 
-    loop {
+    // Checked after every poll, which waits one tick at most.
+    while quit_signal.load(Ordering::SeqCst) == 0 {
         // Only on the tick: any other event (a held key, a key release on
         // Windows, a resize) just redraws. Refreshing on each one rescanned
         // every process many times a second and sampled CPU usage over
@@ -231,7 +276,7 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
     let cpu_gauge = Gauge::default()
         .block(Block::default().title("CPU").borders(Borders::ALL))
         .gauge_style(Style::default().fg(Color::Cyan))
-        .percent(cpu_usage.round() as u16);
+        .percent(gauge_percent(f64::from(cpu_usage)));
     frame.render_widget(cpu_gauge, layout[0]);
 
     let total_memory = app.system.total_memory() as f64;
@@ -245,7 +290,7 @@ fn render_cpu_memory(frame: &mut Frame, app: &App, area: Rect) {
     let memory_gauge = Gauge::default()
         .block(Block::default().title("Memory").borders(Borders::ALL))
         .gauge_style(Style::default().fg(Color::Magenta))
-        .percent(memory_percent.round() as u16)
+        .percent(gauge_percent(memory_percent))
         .label(format!(
             "{:.1} / {:.1} GB",
             used_memory / 1_073_741_824.0,
@@ -349,6 +394,15 @@ mod tests {
             KeyEventKind::Release,
         );
         assert!(!is_quit(&release));
+    }
+
+    #[test]
+    fn gauge_percent_stays_in_range() {
+        assert_eq!(gauge_percent(f64::NAN), 0);
+        assert_eq!(gauge_percent(f64::INFINITY), 0);
+        assert_eq!(gauge_percent(-3.0), 0);
+        assert_eq!(gauge_percent(150.0), 100);
+        assert_eq!(gauge_percent(42.4), 42);
     }
 
     #[test]
