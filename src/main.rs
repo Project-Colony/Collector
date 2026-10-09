@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::ffi::OsString;
 use std::io::{self, IsTerminal};
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -55,11 +57,33 @@ fn gauge_percent(value: f64) -> u16 {
     }
 }
 
+/// Loopback traffic never leaves the machine, so it stays out of the rates.
+/// sysinfo 0.39 has no loopback flag, so this goes by name: `lo` on Linux,
+/// `lo0` on macOS, `Loopback Pseudo-Interface 1` on Windows (where sysinfo
+/// already leaves it out, as it has no hardware address).
+fn is_loopback(interface: &str) -> bool {
+    interface == "lo" || interface == "lo0" || interface.starts_with("Loopback")
+}
+
+/// Each mount point once, in the order the system lists them. A mount stacked
+/// on another is listed twice, and both rows would show the same space, the
+/// top mount's.
+fn unique_mount_points<'a, T>(
+    items: impl IntoIterator<Item = (&'a Path, T)>,
+) -> Vec<(&'a Path, T)> {
+    let mut seen = HashSet::new();
+    items
+        .into_iter()
+        .filter(|&(mount_point, _)| seen.insert(mount_point))
+        .collect()
+}
+
 struct App {
     system: System,
     disks: Disks,
     networks: Networks,
-    /// Bytes received and transmitted per second, all interfaces together.
+    /// Bytes received and transmitted per second, all interfaces except
+    /// loopback together.
     network_rate: (f64, f64),
     last_tick: Instant,
 }
@@ -92,9 +116,13 @@ impl App {
         self.networks.refresh(true);
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_tick);
-        let (rx, tx) = self.networks.values().fold((0, 0), |(rx, tx), data| {
-            (rx + data.received(), tx + data.transmitted())
-        });
+        let (rx, tx) = self
+            .networks
+            .iter()
+            .filter(|(interface, _)| !is_loopback(interface))
+            .fold((0, 0), |(rx, tx), (_, data)| {
+                (rx + data.received(), tx + data.transmitted())
+            });
         self.network_rate = (per_second(rx, elapsed), per_second(tx, elapsed));
         self.last_tick = now;
     }
@@ -305,16 +333,18 @@ fn render_disk_network(frame: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
-    let disk_lines: Vec<Line> = app
-        .disks
-        .iter()
-        .map(|disk| {
+    // By mount point: btrfs subvolumes and bind mounts repeat one device name,
+    // so the device alone could not tell the rows apart.
+    let disks = unique_mount_points(app.disks.iter().map(|disk| (disk.mount_point(), disk)));
+    let disk_lines: Vec<Line> = disks
+        .into_iter()
+        .map(|(mount_point, disk)| {
             let total = disk.total_space() as f64;
             let available = disk.available_space() as f64;
             let used = total - available;
             Line::from(vec![
                 Span::styled(
-                    format!("{} ", disk.name().to_string_lossy()),
+                    format!("{} ", mount_point.display()),
                     Style::default().fg(Color::Yellow),
                 ),
                 Span::raw(format!(
@@ -403,6 +433,31 @@ mod tests {
         assert_eq!(gauge_percent(-3.0), 0);
         assert_eq!(gauge_percent(150.0), 100);
         assert_eq!(gauge_percent(42.4), 42);
+    }
+
+    #[test]
+    fn loopback_is_recognised_on_every_system() {
+        assert!(is_loopback("lo"));
+        assert!(is_loopback("lo0"));
+        assert!(is_loopback("Loopback Pseudo-Interface 1"));
+        assert!(!is_loopback("eth0"));
+        assert!(!is_loopback("en0"));
+        assert!(!is_loopback("wlo1"));
+        assert!(!is_loopback("Ethernet"));
+    }
+
+    #[test]
+    fn mount_points_are_listed_once_in_order() {
+        let mounts = [("/", 1), ("/home", 2), ("/", 3), ("/boot", 4)];
+        let unique = unique_mount_points(mounts.map(|(path, n)| (Path::new(path), n)));
+        assert_eq!(
+            unique,
+            [
+                (Path::new("/"), 1),
+                (Path::new("/home"), 2),
+                (Path::new("/boot"), 4)
+            ]
+        );
     }
 
     #[test]
