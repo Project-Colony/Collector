@@ -21,9 +21,8 @@ locally, over SSH or inside tmux.
 > tests, including a pseudo-terminal run, on Windows and macOS in CI. 0.2.0
 > is the first release, and Colony installs it only with a valid signature.
 > A btop-class rewrite is in progress (see the [roadmap](#roadmap) below).
-> Known gaps until then: the RX/TX rates count the loopback interface, disks
-> are listed by device name rather than mount point, and the process list
-> cannot be scrolled, sorted or filtered.
+> Known gap until then: the process list cannot be scrolled, sorted or
+> filtered.
 
 ## Why Collector
 
@@ -49,8 +48,9 @@ One screen, refreshed every second:
 
 - **CPU**: overall usage, as a gauge.
 - **Memory**: used and total, as a gauge.
-- **Disks**: used and total space for each disk.
-- **Network**: receive and transmit rates in KB/s, all interfaces together.
+- **Disks**: used and total space, by mount point.
+- **Network**: receive and transmit rates in KB/s, all interfaces except
+  loopback together.
 - **Processes**: the ten using the most CPU, with their share of the whole
   machine's CPU and their memory.
 
