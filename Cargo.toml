@@ -16,6 +16,11 @@ crossterm = "0.29.0"
 # not use (on Windows, `component` brings in WMI and COM).
 sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network"] }
 
+# Quit signals (SIGTERM, SIGHUP, SIGINT, SIGQUIT) set a flag the event loop
+# checks, so the terminal is restored before Collector dies of the signal.
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.4.5"
+
 # The Windows version resource, written by build.rs. Not target-specific: a
 # build dependency's cfg is the host's, and a Linux host building for Windows
 # needs it too. No default features: they only add a TOML parser for reading

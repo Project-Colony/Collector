@@ -119,16 +119,17 @@ collector --version  print the version and exit (-V)
 |---|---|
 | `q`, Ctrl+C | Quit |
 
-The terminal is restored on `q`, on Ctrl+C and when Collector panics. A quit
-signal from outside (SIGTERM, SIGHUP) still leaves it in raw mode until 0.3.0;
-`reset` repairs it.
+The terminal is restored on `q`, on Ctrl+C and when Collector panics. On Linux
+and macOS it is also restored on a quit signal from outside (SIGTERM, SIGHUP,
+SIGINT, SIGQUIT): Collector notices it within a second, puts the terminal back,
+then ends the way that signal would have ended it.
 
 ## Roadmap
 
 Each step is one release.
 
 - **0.2.0**: release pipeline, signed builds, `--help` and `--version`, and a terminal restored on quit and on panic.
-- **0.3.0**: core rewrite: Linux reads `/proc` and `/sys` directly; CPU, memory, disk, network and process boxes with correct rates; the terminal restored after quit signals and crashes too; English and French.
+- **0.3.0**: core rewrite: Linux reads `/proc` and `/sys` directly; CPU, memory, disk, network and process boxes with correct rates; the terminal restored after crashes too; English and French.
 - **0.4.0**: Preferences page, Colony palettes and accents, mouse support.
 - **0.5.0**: process depth: tree view, detail panel, signals, renice, filtering.
 - **0.6.0**: sensors and hardware: temperatures, frequencies, disk I/O, battery.
