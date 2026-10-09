@@ -1,6 +1,7 @@
 # Collector - release workflow
 #
 # Built from templates/sign-and-publish-caller.yml in Project-Colony-Resources.
+#
 # Assets follow the Colony naming convention, so Colony auto-detects which
 # platforms Collector ships:
 #
@@ -8,32 +9,33 @@
 #   collector-macos  collector-macos-x86
 #
 # The build legs only build, check and upload artifacts; they never see a key.
-# Authenticode (SignPath, once approved), the ed25519 .sig/.meta/.meta.sig,
-# verification and publishing all happen in
-# .github/workflows/sign-and-publish.yml of Project-Colony-Resources, in this
-# same run. See design/releases.md there, section "Shared signing workflow",
-# and docs/releases.md here.
+# Authenticode (SignPath, once approved), ed25519 signing, verification and
+# publishing all happen in .github/workflows/sign-and-publish.yml of
+# Project-Colony-Resources, in this same run. The signing key is only ever in
+# that workflow's own job, which checks out nothing and builds nothing. See
+# design/releases.md there, section "Shared signing workflow", and
+# docs/releases.md here.
 #
-# Action refs are pinned to commit SHAs on purpose: the called workflow handles
-# the organisation's release signing key, and whoever can move a floating tag
-# can read that secret.
+# Action refs are pinned to commit SHAs on purpose: this workflow can publish
+# releases, and whoever can move a floating tag can change what it runs.
 
 name: Release
 
 on:
   push:
     branches: [main]
-  # Recovery path: finish an existing DRAFT release whose run failed.
-  # release-please emits `release_created` once per release, so "Re-run all
-  # jobs" on the original run makes it report nothing to do and every job
-  # below skip. Start the dispatch from the tag ("Use workflow from: v0.2.0",
-  # or `gh workflow run release.yml --ref v0.2.0 -f tag=v0.2.0`): with SignPath
-  # on, sign-and-publish refuses a run whose commit is not the tag's, since
-  # SignPath records the run's commit as the source of what it signs.
+  # Recovery path. release-please only ever emits `release_created` once per
+  # release, so once a tag exists "Re-run all jobs" makes release-please report
+  # nothing to do and every job below skip, while the run goes green. This
+  # input finishes an existing DRAFT release whose run failed. Start it from
+  # the tag ("Use workflow from: v0.3.0", or `gh workflow run release.yml
+  # --ref v0.3.0 -f tag=v0.3.0`): with SignPath on, sign-and-publish refuses a
+  # run whose commit is not the tag's, since SignPath records the run's commit
+  # as the source of what it signs.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing draft release to build, sign and publish (e.g. v0.2.0). Run from that same tag."
+        description: "Existing draft release to build, sign and publish (e.g. v0.3.0). Run from that same tag."
         required: true
         type: string
 
@@ -47,8 +49,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Assembles a release PR from the conventional commits since the last release.
-  # Merging that PR is what creates the tag; everything below runs only then.
+  # Assembles a release PR from the conventional commits since the last
+  # release. Merging that PR is what creates the tag. Push only: on a recovery
+  # dispatch the tag already exists, and running release-please would open or
+  # update a release PR as a side effect of repairing an old release.
   release-please:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -59,38 +63,31 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # No `release-type` input, on purpose: when it is set, the action
-      # ignores both files below, and with them the changelog sections, the
-      # bump policy and the version in the manifest. The release type lives in
-      # release-please-config.json.
+      # No `release-type` input: when it is set, the action ignores both files.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # release-please PUBLISHES the release, and moves /releases/latest,
-      # before a single binary exists. For the whole build window every Colony
-      # in the field would show an update whose every click fails. Held as a
-      # draft here; sign-and-publish refuses anything else and publishes it
-      # last, once every file is signed and verified on the release.
-      - name: Hold the release as a draft until it is complete
+      # release-please publishes the release, and moves /releases/latest,
+      # before any binary exists. Held as a draft; sign-and-publish refuses
+      # anything else and publishes it last. `-R` is not optional: this job has
+      # no checkout, so `gh` has no git remote to infer the repository from,
+      # and a failure here used to publish the tag with no assets at all.
+      - name: Hold the release as a draft
         if: ${{ steps.release.outputs.release_created }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag_name }}
-        # `-R` is not optional: this job has no `actions/checkout`, so `gh` has
-        # no git remote to infer the repository from and dies with "fatal: not
-        # a git repository". Colony v0.10.0 and Grape v0.3.0 were published
-        # with no assets at all that way.
         run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=true
 
   build:
     name: build ${{ matrix.asset }}
     needs: release-please
     # Runs on a merge that created a release, or on a recovery dispatch (when
-    # release-please is skipped). NOT `always()`: a FAILED release-please must
-    # stop the run at an empty draft.
+    # release-please is skipped). NOT `always()`: that would also build after
+    # release-please FAILED.
     if: ${{ !cancelled() && !failure() && (needs.release-please.outputs.release_created || github.event_name == 'workflow_dispatch') }}
     # GitHub-hosted runners only: SignPath rejects a signing request if any
     # job leading to it ran on a self-hosted runner.
@@ -108,14 +105,13 @@ jobs:
             os: windows-latest
             asset: "collector-windows.exe"
           # "macos" is Apple Silicon, "macos-x86" is Intel. Colony picks between
-          # them at runtime.
+          # them at runtime; shipping only one is a choice, not a bug.
           - target: aarch64-apple-darwin
             os: macos-latest
             asset: "collector-macos"
           - target: x86_64-apple-darwin
             os: macos-latest
             asset: "collector-macos-x86"
-
     steps:
       # The tag, not the branch: a recovery dispatch must rebuild the tagged
       # commit, since the .meta sidecar binds these bytes to that version.
@@ -124,15 +120,20 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch
+      # Pinned to master with `toolchain: stable` rather than to the `stable`
+      # branch: that branch is rebased onto every master commit, so a SHA
+      # pinned on it stops being reachable from any branch.
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       # No build cache here: SignPath forbids release builds that reuse
       # outputs of earlier, unverified builds.
 
-      # --locked: the shipped binary is built from the committed Cargo.lock,
-      # never from whatever the registry resolves to on release day.
+      # Not in the template: --locked, so the shipped binary is built from the
+      # committed Cargo.lock, never from whatever the registry resolves to on
+      # release day.
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
@@ -147,9 +148,12 @@ jobs:
       # A manifest can PARSE perfectly and still leave the program listed in
       # Colony with no Download button, because none of its assets match a
       # convention. `colony validate-manifest` given the asset names catches
-      # exactly that. Linux only: one check per release is enough. No key is
-      # on this runner: signing happens in sign-and-publish. The downloaded
-      # Colony binary runs only once its signature and signed .meta check out.
+      # exactly that. Linux only: one check per release is enough. The names
+      # are the same list as `assets` in the sign-and-publish job below.
+      #
+      # Nothing runs until it verifies, the way Colony checks its own updates:
+      # the signature over colony-linux, the signature over its .meta sidecar,
+      # and that sidecar naming colony-linux with these exact bytes.
       - name: Validate colony.json
         if: runner.os == 'Linux'
         env:
@@ -180,11 +184,13 @@ jobs:
           rm -rf "$d"
 
       # The signature proves provenance and says nothing about whether the
-      # binary RUNS. An artefact built for the wrong architecture, or one that
+      # binary RUNS. An artifact built for the wrong architecture, or one that
       # aborts under the release profile's LTO, would otherwise be signed,
-      # published and installed with every check green. `--version` needs no
-      # terminal, so it runs headless here. It must also print the tag's
-      # version: the .meta sidecar binds these bytes to that version.
+      # published and installed with every check green. The program must
+      # print its version and exit 0 on `--version`, GUI programs included.
+      #
+      # Not in the template: it must also print the tag's version, since the
+      # .meta sidecar binds these bytes to that version.
       - name: Smoke-test the artifact
         if: matrix.target != 'x86_64-apple-darwin'
         shell: bash
@@ -200,11 +206,12 @@ jobs:
             exit 1
           fi
 
-      # SignPath signs only an .exe whose version resource names the project
-      # and carries its version (build.rs writes it). A build that lost either
-      # would be refused at signing time, hours later; this fails it here.
-      # `-cne`, not `-ne`: PowerShell compares strings case-insensitively, and
-      # winresource's default ProductName is the lowercase package name.
+      # Not in the template. SignPath signs only an .exe whose version
+      # resource names the project and carries its version (build.rs writes
+      # it). A build that lost either would be refused at signing time, hours
+      # later; this fails it here. `-cne`, not `-ne`: PowerShell compares
+      # strings case-insensitively, and winresource's default ProductName is
+      # the lowercase package name.
       - name: Check the Windows version resource
         if: runner.os == 'Windows'
         shell: pwsh
@@ -220,18 +227,21 @@ jobs:
             exit 1
           }
 
-      # The Intel macOS artefact is cross-compiled on an arm64 runner and
+      # The Intel macOS artifact is cross-compiled on an arm64 runner and
       # cannot be executed there, so assert its architecture instead: that is
       # the leg with the fewest users, where a regression survives longest.
       - name: Check the cross-compiled artifact's architecture
         if: matrix.target == 'x86_64-apple-darwin'
+        shell: bash
         run: |
           file "${{ matrix.asset }}"
           file "${{ matrix.asset }}" | grep -q 'x86_64' \
             || { echo "::error::${{ matrix.asset }} is not an x86_64 binary"; exit 1; }
 
-      # The file at the artifact root, under its release name. The name
-      # prefix is what `artifact-pattern` below matches.
+      # The file at the artifact root, under its release name, and never to
+      # the release from here: Authenticode rewrites the .exe, so nothing may
+      # reach the release before every byte is final. The name prefix is what
+      # `artifact-pattern` below matches.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-${{ matrix.asset }}
@@ -239,10 +249,11 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Authenticode (once SignPath is on), .sig/.meta/.meta.sig over the final
-  # bytes, upload to the draft, download again, verify, publish. Chained as
-  # `needs:` in this same run: SignPath accepts only an artifact uploaded by
-  # the run that requests the signature.
+  # In the same run as the builds, chained by `needs:` rather than
+  # `on: release`: a release created with the default GITHUB_TOKEN fires no
+  # release events, so a workflow written that way never runs. Pinned to the
+  # organisation's commit of the shared workflow; design/releases.md says when
+  # that pin moves.
   sign-and-publish:
     needs: [release-please, build]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
@@ -250,7 +261,7 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # main
+    uses: Project-Colony/Project-Colony-Resources/.github/workflows/sign-and-publish.yml@619460ff4dc0049f129955f0988d368427b9eedb # organisation pin
     with:
       tag: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
       assets: "collector-linux collector-windows.exe collector-macos collector-macos-x86"
@@ -258,6 +269,9 @@ jobs:
       # Uncomment once SignPath has approved this project and its project
       # exists in the Project-Colony SignPath organisation:
       # signpath-project-slug: "collector"
+      # Leave the default `code-signing-policy: true` only while README.md has
+      # a "## Code signing policy" section (templates/program/README.md has
+      # one): the release notes link to it.
     # Named, not `inherit`: the called workflow gets these two and nothing else.
     secrets:
       COLONY_SIGNING_KEY_PEM: ${{ secrets.COLONY_SIGNING_KEY_PEM }}
