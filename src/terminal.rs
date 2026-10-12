@@ -41,11 +41,14 @@ pub fn quit_signal() -> io::Result<Arc<AtomicUsize>> {
     let quit_signal = Arc::new(AtomicUsize::new(0));
     #[cfg(unix)]
     {
+        use crate::i18n::tf;
         use signal_hook::consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
         for signal in [SIGTERM, SIGHUP, SIGINT, SIGQUIT] {
             let flag = Arc::clone(&quit_signal);
             signal_hook::flag::register_usize(signal, flag, signal as usize).map_err(|err| {
-                io::Error::new(err.kind(), format!("cannot handle signal {signal}: {err}"))
+                let (signal, error) = (signal.to_string(), err.to_string());
+                let message = tf("signal_error", &[("signal", &signal), ("error", &error)]);
+                io::Error::new(err.kind(), message)
             })?;
         }
     }

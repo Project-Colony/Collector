@@ -39,8 +39,7 @@ locally, over SSH or inside tmux.
 - **Small and quiet**: a single binary of about 1 MB on Linux, with no network
   connection and no file written (see the [privacy policy](#privacy-policy)).
 
-Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap,
-and adds English and French and the Colony palettes on the way.
+Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap.
 
 ## What it does
 
@@ -54,7 +53,8 @@ One screen, refreshed every second:
 - **Processes**: the ten using the most CPU, with their share of the whole
   machine's CPU and their memory.
 
-`q` or Ctrl+C quits, and the terminal is restored.
+`q` or Ctrl+C quits, and the terminal is restored. Everything is shown in
+English or French (see [Language](#language)).
 
 ## Installation
 
@@ -124,13 +124,22 @@ and macOS it is also restored on a quit signal from outside (SIGTERM, SIGHUP,
 SIGINT, SIGQUIT): Collector notices it within a second, puts the terminal back,
 then ends the way that signal would have ended it.
 
+### Language
+
+Collector speaks French when the system language is French, and English
+otherwise, with French units and decimal commas (`1,5 Go`). On Linux the
+language comes from the first of `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG`
+that is set, so `LANGUAGE=en collector` runs it in English; on Windows and
+macOS it is the language chosen in the system settings. `collector --version`
+prints the same `collector X.Y.Z` line in both.
+
 ## Roadmap
 
 Each step is one release.
 
 - **0.2.0**: release pipeline, signed builds, `--help` and `--version`, and a terminal restored on quit and on panic.
-- **0.3.0**: core rewrite: Linux reads `/proc` and `/sys` directly; CPU, memory, disk, network and process boxes with correct rates; the terminal restored after crashes too; English and French.
-- **0.4.0**: Preferences page, Colony palettes and accents, mouse support.
+- **0.3.0**: English and French, a Preferences page, and the Colony themes and accents with high contrast.
+- **0.4.0**: core rewrite: Linux reads `/proc` and `/sys` directly; CPU, memory, disk, network and process boxes with correct rates; the terminal restored after crashes too; mouse support.
 - **0.5.0**: process depth: tree view, detail panel, signals, renice, filtering.
 - **0.6.0**: sensors and hardware: temperatures, frequencies, disk I/O, battery.
 - **0.7.0**: GPU monitoring.

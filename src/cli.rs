@@ -5,18 +5,9 @@
 use std::ffi::OsString;
 use std::process::ExitCode;
 
+use crate::i18n::{t, tf};
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const USAGE: &str = "\
-Usage: collector [OPTION]
-
-A terminal system monitor: CPU, memory, disks, network and processes.
-
-Options:
-  -h, --help     Print this help and exit
-  -V, --version  Print the version and exit
-
-Keys: q or Ctrl+C quits.
-";
 
 pub enum Mode {
     Run,
@@ -38,17 +29,20 @@ pub fn parse_args(args: &[OsString]) -> Result<Mode, String> {
     }
 }
 
+/// Exactly `collector X.Y.Z`, in every locale: the release workflow's smoke
+/// test and the signed `.meta` of each asset are checked against it.
 pub fn print_version() -> ExitCode {
     println!("collector {VERSION}");
     ExitCode::SUCCESS
 }
 
 pub fn print_help() -> ExitCode {
-    print!("collector {VERSION}\n\n{USAGE}");
+    print!("collector {VERSION}\n\n{}", t("usage"));
     ExitCode::SUCCESS
 }
 
 pub fn print_unexpected(arg: &str) -> ExitCode {
-    eprint!("collector: unexpected argument '{arg}'\n\n{USAGE}");
+    let message = tf("unexpected_argument", &[("arg", arg)]);
+    eprint!("{message}\n\n{}", t("usage"));
     ExitCode::from(2)
 }

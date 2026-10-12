@@ -43,6 +43,19 @@ impl App {
         }
     }
 
+    /// No readings at all, for drawing tests: no system scan, nothing that
+    /// depends on the machine the tests run on.
+    #[cfg(test)]
+    pub fn empty() -> Self {
+        Self {
+            system: System::new(),
+            disks: Disks::new(),
+            networks: Networks::new(),
+            network_rate: (0.0, 0.0),
+            last_tick: Instant::now(),
+        }
+    }
+
     fn refresh(&mut self) {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();

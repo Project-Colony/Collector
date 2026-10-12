@@ -15,6 +15,9 @@ crossterm = "0.29.0"
 # No default features: they add `component` and `user`, which Collector does
 # not use (on Windows, `component` brings in WMI and COM).
 sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network"] }
+# The system language, for English or French. No dependencies of its own on
+# Linux, Windows or macOS.
+sys-locale = "0.3.2"
 
 # Quit signals (SIGTERM, SIGHUP, SIGINT, SIGQUIT) set a flag the event loop
 # checks, so the terminal is restored before Collector dies of the signal.

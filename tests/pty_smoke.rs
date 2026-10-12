@@ -20,8 +20,9 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(15);
 /// A box title from the first frame. ConPTY renders the screen itself and
 /// need not pass escape sequences such as the alternate-screen switch through,
 /// so the test waits for text rather than for a sequence. One word: ratatui
-/// skips a blank cell with a cursor move, so a space splits text in two.
-const FRAME_MARKER: &[u8] = b"Network";
+/// skips a blank cell with a cursor move, so a space splits text in two. And
+/// the same in English and French, as the test runs in the system language.
+const FRAME_MARKER: &[u8] = b"CPU";
 /// Cursor position request. ConPTY sends one when it starts and waits for the
 /// answer, as a real terminal would give.
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
