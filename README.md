@@ -38,7 +38,7 @@ locally, over SSH or inside tmux.
   installs, updates and checks.
 - **In the terminal you already have open**: locally, over SSH (`ssh -t`) or
   inside tmux, where a desktop task manager cannot follow.
-- **Small and quiet**: a single binary of about 1 MB on Linux, with no network
+- **Small and quiet**: a single binary of about 1.3 MB on Linux, with no network
   connection and no file written except its own preferences (see
   [Privacy](#privacy)).
 
