@@ -56,8 +56,8 @@ gh workflow run release.yml -R Project-Colony/Collector --ref v0.2.0 -f tag=v0.2
 
 Each step of the [roadmap](../README.md#roadmap) is one minor release. The
 release pull request is merged only when that step is done; until then it
-keeps collecting commits. A release pull request that holds only fixes is a
-patch release and may be merged between steps, as 0.2.1 was.
+keeps collecting commits. A release pull request that holds no `feat` commit
+is a patch release and may be merged between steps, as 0.2.1 was.
 
 `release-please-config.json` is the organisation template unchanged, so
 `"bump-minor-pre-major"` is `false`: a single `feat!:` commit or

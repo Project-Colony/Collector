@@ -17,14 +17,13 @@ Colony. Collector is the Colony one: a terminal system monitor, installed and
 updated through Colony, that runs the same on Linux, Windows and macOS,
 locally, over SSH or inside tmux.
 
-> **Status:** Collector is used by hand on Linux, where it restores the
-> terminal on `q`, Ctrl+C, a panic and a quit signal. On Linux, Windows and
-> macOS, CI runs its tests in English and French, including the real binary
-> in a pseudo-terminal. Every release since 0.2.0 is signed, and Colony
-> installs one only with a valid signature. Wired but untested: nobody has run
-> it by hand on macOS or Windows yet, and mouse clicks in the classic Windows
-> console (conhost) have not been tried. Known gap: the process list cannot
-> be scrolled, sorted or filtered yet (see the [roadmap](#roadmap)).
+> **Status:** Collector is used by hand on Linux. CI runs its tests on Linux,
+> Windows and macOS, including the real binary in a pseudo-terminal: it quits
+> on `q` on all three, and on Linux and macOS the test also checks that the
+> terminal is restored, after `q` and after SIGTERM. Every release since 0.2.0
+> is signed, and Colony installs one only with a valid signature. Untested:
+> nobody has run it by hand on macOS or Windows yet. Known gap: the process
+> list cannot be scrolled, sorted or filtered yet (see the [roadmap](#roadmap)).
 
 ## Why Collector
 
@@ -39,10 +38,10 @@ locally, over SSH or inside tmux.
 - **In the terminal you already have open**: locally, over SSH (`ssh -t`) or
   inside tmux, where a desktop task manager cannot follow.
 - **Small and quiet**: a single binary of about 1 MB on Linux, with no network
-  connection and no file written except its own preferences (see the
-  [privacy policy](#privacy-policy)).
+  connection and no file written (see the [privacy policy](#privacy-policy)).
 
-Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap.
+Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap,
+and adds English and French and the Colony palettes on the way.
 
 ## What it does
 
@@ -128,7 +127,7 @@ then ends the way that signal would have ended it.
 
 ## Roadmap
 
-Each step is one minor release. Patch releases in between only fix bugs.
+Each step is one minor release. Patch releases in between add no features.
 
 - **0.2.0**: release pipeline, signed builds, `--help` and `--version`, and a terminal restored on quit and on panic.
   0.2.1 fixed a crash when a reading went over 100%, restored the terminal on quit signals too, left loopback traffic out of the network rates and listed disks by mount point.
