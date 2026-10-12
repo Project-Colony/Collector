@@ -3796,7 +3796,7 @@
             "bg": "#eceeec",
             "accent": "#21a04d"
           },
-          "notes": "Green ink on white-grey ceramic — her Planet Diving Suit. A light theme on\npurpose: a dark theme can never say \"white\".\n",
+          "notes": "Green ink on white-grey ceramic: her Planet Diving Suit. A light theme on\npurpose: a dark theme can never say \"white\".\n",
           "contrast": {
             "textPrimaryOnBgPrimary": 5.61,
             "textMutedOnBgPrimary": 3.5
@@ -3916,7 +3916,7 @@
             "bg": "#111010",
             "accent": "#ffd23e"
           },
-          "notes": "Strict gold-on-black duotone. No brown tint — the gold must stay gold.",
+          "notes": "Strict gold-on-black duotone. No brown tint: the gold must stay gold.",
           "contrast": {
             "textPrimaryOnBgPrimary": 11.96,
             "textMutedOnBgPrimary": 5.37
@@ -4036,7 +4036,7 @@
             "bg": "#1a1622",
             "accent": "#cfa8ff"
           },
-          "notes": "Lavender ink on deep violet. Her khaki coat is demoted to the success role\nrather than becoming a second surface — two saturated materials side by side\nclashed and were rejected.\n",
+          "notes": "Lavender ink on deep violet. Her khaki coat is demoted to the success role\nrather than becoming a second surface: two saturated materials side by side\nclashed and were rejected.\n",
           "contrast": {
             "textPrimaryOnBgPrimary": 11.4,
             "textMutedOnBgPrimary": 4.72
