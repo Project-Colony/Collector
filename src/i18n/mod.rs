@@ -217,6 +217,24 @@ mod tests {
         assert!(missing.is_empty(), "keys missing from en.rs: {missing:?}");
     }
 
+    /// The settings_* strings and theme_applied are colony-ui's. Resources
+    /// ships them in config/themes.json under `labels`, and the themes.json
+    /// CI job keeps that copy current, so a reworded label fails here.
+    #[test]
+    fn shared_strings_match_the_colony_labels() {
+        let themes: serde_json::Value =
+            serde_json::from_str(include_str!("../../config/themes.json")).expect("themes.json");
+        for (locale, strings) in [("en", en::STRINGS), ("fr", fr::STRINGS)] {
+            let shared = strings
+                .iter()
+                .filter(|(key, _)| key.starts_with("settings_") || *key == "theme_applied");
+            for &(key, value) in shared {
+                let label = themes["labels"][locale][key].as_str();
+                assert_eq!(label, Some(value), "{locale}: {key}");
+            }
+        }
+    }
+
     #[test]
     fn french_follows_the_language_subtag() {
         for tag in ["fr", "fr-FR", "fr_CA.UTF-8", "FR-be", "fr@euro"] {

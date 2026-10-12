@@ -43,8 +43,9 @@ Keys: p opens and closes Preferences, q or Ctrl+C quits.
     ("monitor_hint", "p: Preferences   q or Ctrl+C: quit"),
     // The Preferences page. The settings_* keys, theme_applied and their
     // strings are colony-ui's (colony_ui::i18n), copied exactly: every Colony
-    // program says the same thing in the same words. Theme and accent names
-    // are not here: they come from config/themes.json.
+    // program says the same thing in the same words. A test holds both
+    // locales to the `labels` of config/themes.json, which carries them.
+    // Theme and accent names are not here: they come from that file too.
     ("settings_title", "Preferences"),
     ("settings_close", "Close"),
     ("settings_cat_general", "General"),
