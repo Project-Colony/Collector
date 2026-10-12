@@ -22,7 +22,9 @@ locally, over SSH or inside tmux.
 > is the first release, and Colony installs it only with a valid signature.
 > A btop-class rewrite is in progress (see the [roadmap](#roadmap) below).
 > Known gap until then: the process list cannot be scrolled, sorted or
-> filtered.
+> filtered. Colours are 24-bit when the terminal says it shows them
+> (`COLORTERM=truecolor` or `24bit`, or Windows Terminal), and the nearest of
+> the xterm 256 colours otherwise.
 
 ## Why Collector
 
@@ -57,7 +59,8 @@ One screen, refreshed every second, or at the interval chosen in
 
 `q` or Ctrl+C quits, and the terminal is restored. Clicking **Collector** in
 the top-left corner, or pressing `p`, opens the [Preferences](#preferences).
-Everything is shown in English or French (see [Language](#language)).
+Everything is shown in English or French (see [Language](#language)), in the
+Colony theme and accent chosen there, with high contrast if asked for.
 
 ## Installation
 
@@ -130,11 +133,13 @@ On the Preferences page:
 | Up, Down | Move between categories, or between sections and settings |
 | Tab, Shift+Tab | Switch between the categories and their content |
 | Enter | Open or close a section, or move a setting to its next value |
-| Left, Right | Change the focused setting |
+| Left, Right | Change the focused setting; on a theme, move through its variants |
 | Esc, `p` | Close Preferences (or click **Close**) |
 
-Collector takes the mouse for its clicks, so selecting text with the mouse
-needs the terminal's own modifier, Shift in most terminals.
+The mouse wheel moves through the open category, and a click on a theme card
+or an accent swatch picks it. Collector takes the mouse for this, so selecting
+text with the mouse needs the terminal's own modifier, Shift in most
+terminals.
 
 The terminal is restored on `q`, on Ctrl+C and when Collector panics. On Linux
 and macOS it is also restored on a quit signal from outside (SIGTERM, SIGHUP,
@@ -150,6 +155,17 @@ click. A change applies at once and is saved at once; there is no Save button.
 
 - **General**: the interface language, and how often the readings are taken
   (every 0.5, 1, 2 or 5 seconds; more often costs more CPU).
+- **Appearance**: the theme, from every Colony theme family and its light and
+  dark variants; the accent, one of the eight shared Colony accents or the
+  theme's own; and a live preview. The themes come from
+  [Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources),
+  the same ones every Colony program offers. Typography and Effects are left
+  out: the terminal sets the font and its size, and Collector has no visual
+  effects.
+- **Accessibility**: high contrast, which moves text and borders away from the
+  background of whichever theme is on, and reduce motion (Collector animates
+  nothing today). A dyslexia-friendly font or larger text is set in the
+  terminal.
 - **About**: the version, the license, the source code and where the
   preferences file is.
 

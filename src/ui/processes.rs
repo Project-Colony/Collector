@@ -1,8 +1,8 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Row, Table};
+use ratatui::widgets::{Row, Table};
 
+use super::style;
 use crate::app::App;
 use crate::i18n::{number, t, tf};
 
@@ -37,15 +37,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Percentage(25),
         ],
     )
-    .header(
-        Row::new(vec![t("process"), t("cpu"), t("memory")])
-            .style(Style::default().fg(Color::Green)),
-    )
-    .block(
-        Block::default()
-            .title(t("top_processes"))
-            .borders(Borders::ALL),
-    );
+    .header(Row::new(vec![t("process"), t("cpu"), t("memory")]).style(style::secondary()))
+    .block(style::block(t("top_processes")));
 
     frame.render_widget(table, area);
 }

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -14,6 +15,7 @@ use super::{Hit, hovered, style};
 use crate::app::{App, Message};
 use crate::i18n::{number, t, tf};
 use crate::preferences::{self, Language, Preferences, Setting};
+use crate::theme;
 
 /// colony-ui's `STANDARD_CATEGORIES` in their fixed order, then its
 /// `ABOUT_CATEGORY`, last.
@@ -36,6 +38,11 @@ const DESCRIPTIONS: [&str; 4] = [
 /// needed.
 const COLLAPSED: &str = "►";
 const EXPANDED: &str = "▼";
+/// The mark on the current theme card and accent swatch. Not WGL4, but in
+/// every common monospace font, and a terminal falls back for the others.
+const CHECK: &str = "✓";
+/// Where the cards and swatches start: under their row's title.
+const INDENT: &str = "    ";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Focus {
@@ -78,6 +85,13 @@ pub enum Row {
     Text(String),
     /// A blank line after an open section.
     Gap,
+    /// A theme family's variant cards, under its row. Each card is a click
+    /// target of its own.
+    Cards(usize),
+    /// The accent swatches, under the accent row, clicked one by one too.
+    Swatches,
+    /// A live sample of the current theme and accent.
+    Preview,
 }
 
 impl Row {
@@ -144,10 +158,104 @@ pub fn rows(prefs: &Preferences, page: &Page) -> Vec<Row> {
                 Err(err) => err.to_string(),
             }));
         }
-        // Appearance and Accessibility: their heading and description only.
+        1 => {
+            section(&mut rows, page, "theme", "settings_section_theme", || {
+                let mut rows = vec![Row::Note(t("settings_theme_desc").to_owned())];
+                // Without the family's glyph: it is a Nerd Font one, which
+                // the terminal's font may not have.
+                for (index, family) in theme::catalog().families.iter().enumerate() {
+                    let current = family.variants.iter().find(|variant| {
+                        family.key == prefs.selected_theme && variant.key == prefs.selected_variant
+                    });
+                    rows.push(Row::Setting {
+                        setting: Setting::Theme(index),
+                        title: family.label.text(),
+                        value: current.map_or_else(String::new, |v| v.label.text().to_owned()),
+                    });
+                    rows.push(Row::Cards(index));
+                }
+                rows
+            });
+            section(&mut rows, page, "colors", "settings_section_colors", || {
+                let accent = theme::picked_accent(prefs)
+                    .map_or(t("settings_default_accent"), |accent| accent.label.text());
+                vec![
+                    Row::Note(t("settings_colors_desc").to_owned()),
+                    Row::Setting {
+                        setting: Setting::Accent,
+                        title: t("preferences_accent"),
+                        value: accent.to_owned(),
+                    },
+                    Row::Swatches,
+                    Row::Setting {
+                        setting: Setting::AutoAccent,
+                        title: t("settings_auto_accent"),
+                        value: on_off(prefs.auto_accent),
+                    },
+                    Row::Note(t("settings_auto_accent_desc").to_owned()),
+                ]
+            });
+            section(
+                &mut rows,
+                page,
+                "preview",
+                "settings_section_preview",
+                || {
+                    vec![
+                        Row::Note(t("settings_preview_desc").to_owned()),
+                        Row::Preview,
+                    ]
+                },
+            );
+            closing_note(&mut rows, "preferences_appearance_note");
+        }
+        2 => {
+            section(&mut rows, page, "vision", "settings_section_vision", || {
+                vec![
+                    Row::Note(t("settings_vision_desc").to_owned()),
+                    Row::Setting {
+                        setting: Setting::HighContrast,
+                        title: t("settings_high_contrast"),
+                        value: on_off(prefs.high_contrast),
+                    },
+                    Row::Note(t("settings_high_contrast_desc").to_owned()),
+                    Row::Note(t("preferences_font_note").to_owned()),
+                ]
+            });
+            section(&mut rows, page, "motion", "settings_section_motion", || {
+                vec![
+                    Row::Note(t("settings_motion_desc").to_owned()),
+                    Row::Setting {
+                        setting: Setting::ReduceMotion,
+                        title: t("settings_reduce_motion"),
+                        value: on_off(prefs.reduce_motion),
+                    },
+                    Row::Note(t("settings_reduce_motion_desc").to_owned()),
+                    Row::Note(t("preferences_motion_note").to_owned()),
+                ]
+            });
+            closing_note(&mut rows, "preferences_reading_note");
+        }
         _ => {}
     }
     rows
+}
+
+/// What a category leaves out and why, a blank line below its sections.
+fn closing_note(rows: &mut Vec<Row>, key: &'static str) {
+    if !matches!(rows.last(), Some(Row::Gap)) {
+        rows.push(Row::Gap);
+    }
+    rows.push(Row::Note(t(key).to_owned()));
+}
+
+fn on_off(on: bool) -> String {
+    t(if on {
+        "preferences_on"
+    } else {
+        "preferences_off"
+    })
+    .to_owned()
 }
 
 /// A section header, and its content when it is open.
@@ -197,10 +305,8 @@ pub fn render(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &mut 
         Paragraph::new(t("settings_title")).style(style::title()),
         title,
     );
-    frame.render_widget(
-        Paragraph::new(close).style(style::item(false, hovered(app, close_area))),
-        close_area,
-    );
+    let close_style = style::muted().patch(style::item(false, hovered(app, close_area)));
+    frame.render_widget(Paragraph::new(close).style(close_style), close_area);
     hits.push(Hit {
         area: close_area,
         message: Message::TogglePreferences,
@@ -220,7 +326,9 @@ pub fn render(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &mut 
             .spacing(1)
             .areas(body);
 
-    let block = Block::default().borders(Borders::RIGHT);
+    let block = Block::default()
+        .borders(Borders::RIGHT)
+        .border_style(style::divider());
     let inner = block.inner(list);
     frame.render_widget(block, list);
     for (index, (label, y)) in labels.iter().zip(inner.y..inner.bottom()).enumerate() {
@@ -242,13 +350,15 @@ pub fn render(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &mut 
 
 fn render_content(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &mut Vec<Hit>) {
     let width = usize::from(area.width);
+    let prefs = &app.prefs;
     let mut lines = vec![Line::styled(t(CATEGORIES[page.category]), style::title())];
     lines.extend(muted_lines(t(DESCRIPTIONS[page.category]), width));
     lines.push(Line::default());
 
     // (line, index among the rows that take focus)
     let mut targets = Vec::new();
-    for row in rows(&app.prefs, page) {
+    let mut picks = Vec::new();
+    for row in rows(prefs, page) {
         if row.takes_focus() {
             targets.push((lines.len(), targets.len()));
         }
@@ -263,46 +373,215 @@ fn render_content(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &
                     width,
                 ));
             }
-            Row::Setting { title, value, .. } => lines.push(spread(
-                Span::raw(format!("  {title}")),
-                Span::raw(format!("‹ {value} ›")),
-                width,
-            )),
+            Row::Setting { title, value, .. } => {
+                let title = Span::raw(format!("  {title}"));
+                lines.push(if value.is_empty() {
+                    Line::from(title)
+                } else {
+                    let value = Span::styled(format!("‹ {value} ›"), style::secondary());
+                    spread(title, value, width)
+                });
+            }
             Row::Note(text) => lines.extend(muted_lines(&text, width)),
             Row::Text(text) => lines.extend(wrap(&text, width).into_iter().map(Line::from)),
             Row::Gap => lines.push(Line::default()),
+            Row::Cards(family) => cards(prefs, family, width, &mut lines, &mut picks),
+            Row::Swatches => swatches(prefs, &mut lines, &mut picks),
+            Row::Preview => lines.extend(preview(prefs)),
         }
     }
 
-    // Scrolled just enough to keep the focused row on screen.
+    // Scrolled just enough to keep the focused row on screen, with what
+    // belongs to it up to the next row (its cards, its description) when
+    // that fits too.
     let focused = |index: usize| page.focus == Focus::Content && index == page.row;
-    let focused_line = targets
+    let (focused_line, end) = targets
         .iter()
-        .find(|&&(_, index)| focused(index))
-        .map_or(0, |&(line, _)| line);
-    let offset = (focused_line + 1).saturating_sub(usize::from(area.height));
-
-    for (line, index) in targets {
-        let Some(y) = line
-            .checked_sub(offset)
+        .position(|&(_, index)| focused(index))
+        .map_or((0, 0), |at| {
+            let next = targets.get(at + 1).map_or(lines.len(), |&(line, _)| line);
+            (targets[at].0, next)
+        });
+    let offset = end
+        .saturating_sub(usize::from(area.height))
+        .min(focused_line);
+    let screen_row = |line: usize| {
+        line.checked_sub(offset)
             .and_then(|row| u16::try_from(row).ok())
             .filter(|&row| row < area.height)
-        else {
+            .map(|row| area.y + row)
+    };
+
+    for (line, index) in targets {
+        let Some(y) = screen_row(line) else {
             continue;
         };
         let target = Rect {
-            y: area.y + y,
+            y,
             height: 1,
             ..area
         };
-        lines[line].style = style::item(focused(index), hovered(app, target));
+        // Over the spans' own colours too, so selected text always sits on
+        // the accent in the accent's own legible colour.
+        let style = style::item(focused(index), hovered(app, target));
+        let line = &mut lines[line];
+        line.style = line.style.patch(style);
+        for span in &mut line.spans {
+            span.style = span.style.patch(style);
+        }
         hits.push(Hit {
             area: target,
             message: Message::Activate(index),
         });
     }
+    for pick in picks {
+        let Some(y) = screen_row(pick.line) else {
+            continue;
+        };
+        let x = area
+            .x
+            .saturating_add(u16::try_from(pick.x).unwrap_or(u16::MAX));
+        let width = u16::try_from(pick.width).unwrap_or(u16::MAX);
+        let target = Rect::new(x, y, width, 1).intersection(area);
+        if !target.is_empty() {
+            hits.push(Hit {
+                area: target,
+                message: pick.message,
+            });
+        }
+    }
 
     frame.render_widget(Paragraph::new(lines.split_off(offset)), area);
+}
+
+/// A click target inside a line: a theme card or an accent swatch.
+struct Pick {
+    line: usize,
+    /// Columns from the left of the content.
+    x: usize,
+    width: usize,
+    message: Message,
+}
+
+/// A family's variant cards, as many to a line as fit. A card is the
+/// variant's background with a bar of its accent, then its name, and a check
+/// on the current one, as colony-ui's theme picker draws them.
+fn cards(
+    prefs: &Preferences,
+    family: usize,
+    width: usize,
+    lines: &mut Vec<Line<'static>>,
+    picks: &mut Vec<Pick>,
+) {
+    let Some(meta) = theme::catalog().families.get(family) else {
+        return;
+    };
+    let mut line = Line::from(INDENT);
+    for (index, variant) in meta.variants.iter().enumerate() {
+        let current = meta.key == prefs.selected_theme && variant.key == prefs.selected_variant;
+        let mark = if current { CHECK } else { " " };
+        let name = format!("{} {mark} ", variant.label.text());
+        let card = 1 + Span::raw(name.as_str()).width();
+        if line.width() > INDENT.len() {
+            if line.width() + 1 + card > width {
+                lines.push(std::mem::replace(&mut line, Line::from(INDENT)));
+            } else {
+                line.push_span(" ");
+            }
+        }
+        picks.push(Pick {
+            line: lines.len(),
+            x: line.width(),
+            width: card,
+            message: Message::Theme {
+                family,
+                variant: index,
+            },
+        });
+        // Painted from the variant's own colours, not the active theme's:
+        // each card shows what it would look like.
+        let background = theme::paint(variant.swatch_bg);
+        let on = |color| Style::new().fg(theme::paint(color)).bg(background);
+        line.push_span(Span::styled("▌", on(variant.swatch_accent)));
+        line.push_span(Span::styled(
+            name,
+            on(theme::contrast_on(variant.swatch_bg)),
+        ));
+    }
+    lines.push(line);
+}
+
+/// The shared accents as filled circles, a check after the picked one.
+fn swatches(prefs: &Preferences, lines: &mut Vec<Line<'static>>, picks: &mut Vec<Pick>) {
+    let picked = theme::picked_accent(prefs).map(|accent| accent.key.as_str());
+    let mut line = Line::from(INDENT);
+    for (index, accent) in theme::catalog().accents.iter().enumerate() {
+        picks.push(Pick {
+            line: lines.len(),
+            x: line.width(),
+            width: 2,
+            message: Message::Accent(index),
+        });
+        let dot = Style::new().fg(theme::paint(accent.color));
+        line.push_span(Span::styled("●", dot));
+        line.push_span(if picked == Some(accent.key.as_str()) {
+            CHECK
+        } else {
+            " "
+        });
+        line.push_span(" ");
+    }
+    lines.push(line);
+}
+
+/// colony-ui's Preview card in cells: a title, body text and the theme and
+/// accent names down the text ramp, then a gauge and a button in the accent.
+fn preview(prefs: &Preferences) -> Vec<Line<'static>> {
+    let family = theme::catalog()
+        .families
+        .iter()
+        .find(|family| family.key == prefs.selected_theme);
+    let theme_name = family.map_or_else(
+        || prefs.selected_theme.clone(),
+        |family| {
+            let variant = family
+                .variants
+                .iter()
+                .find(|variant| variant.key == prefs.selected_variant)
+                .map_or("", |variant| variant.label.text());
+            format!("{} · {variant}", family.label.text())
+        },
+    );
+    let accent = theme::picked_accent(prefs)
+        .map_or(t("settings_default_accent"), |accent| accent.label.text());
+    let card = |content: Vec<Span<'static>>| {
+        let mut line = Line::from(Span::styled("│ ", style::divider()));
+        line.spans.extend(content);
+        line
+    };
+    vec![
+        card(vec![Span::styled(
+            t("settings_preview_card"),
+            style::title(),
+        )]),
+        card(vec![Span::styled(
+            t("settings_preview_body"),
+            style::secondary(),
+        )]),
+        card(vec![Span::styled(
+            format!("{theme_name} · {accent}"),
+            style::muted(),
+        )]),
+        card(vec![
+            Span::styled("█".repeat(12), style::gauge()),
+            Span::styled(" ".repeat(8), style::gauge()),
+            Span::raw("  "),
+            Span::styled(
+                format!(" {} ", t("settings_preview_button")),
+                style::item(true, false),
+            ),
+        ]),
+    ]
 }
 
 /// `left` at the start of the line and `right` at its end.

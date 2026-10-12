@@ -41,9 +41,10 @@ Keys: p opens and closes Preferences, q or Ctrl+C quits.
     ("megabytes", "{value} MB"),
     ("percent", "{value}%"),
     ("monitor_hint", "p: Preferences   q or Ctrl+C: quit"),
-    // The Preferences page. The settings_* keys and their strings are
-    // colony-ui's (colony_ui::i18n), copied exactly: every Colony program
-    // says the same thing in the same words.
+    // The Preferences page. The settings_* keys, theme_applied and their
+    // strings are colony-ui's (colony_ui::i18n), copied exactly: every Colony
+    // program says the same thing in the same words. Theme and accent names
+    // are not here: they come from config/themes.json.
     ("settings_title", "Preferences"),
     ("settings_close", "Close"),
     ("settings_cat_general", "General"),
@@ -62,6 +63,48 @@ Keys: p opens and closes Preferences, q or Ctrl+C quits.
         "Make the interface easier to see, read and use.",
     ),
     ("settings_cat_about", "About"),
+    ("settings_section_theme", "Theme"),
+    (
+        "settings_theme_desc",
+        "Applies immediately to the whole interface.",
+    ),
+    ("settings_section_colors", "Colors & accents"),
+    (
+        "settings_colors_desc",
+        "Pick an accent, or keep the one the theme was designed with.",
+    ),
+    ("settings_auto_accent", "Auto accent from background"),
+    (
+        "settings_auto_accent_desc",
+        "Uses the theme's own accent instead of the one picked above.",
+    ),
+    ("settings_default_accent", "Theme accent"),
+    ("settings_section_preview", "Preview"),
+    (
+        "settings_preview_desc",
+        "A live sample of your current choices.",
+    ),
+    ("settings_preview_card", "Preview card"),
+    ("settings_preview_body", "Body text looks like this."),
+    ("settings_preview_button", "Button"),
+    ("settings_section_vision", "Vision"),
+    (
+        "settings_vision_desc",
+        "Options that make the interface easier to see.",
+    ),
+    ("settings_high_contrast", "High contrast"),
+    (
+        "settings_high_contrast_desc",
+        "Increases the contrast of text and borders.",
+    ),
+    ("settings_section_motion", "Motion"),
+    ("settings_motion_desc", "Calm the interface down."),
+    ("settings_reduce_motion", "Reduce motion"),
+    (
+        "settings_reduce_motion_desc",
+        "Turns off every animation and transition.",
+    ),
+    ("theme_applied", "Theme applied."),
     // Collector's own.
     (
         "preferences_hint",
@@ -102,5 +145,24 @@ Keys: p opens and closes Preferences, q or Ctrl+C quits.
     (
         "preferences_save_failed",
         "Could not save the preferences: {error}",
+    ),
+    ("preferences_accent", "Accent"),
+    ("preferences_on", "On"),
+    ("preferences_off", "Off"),
+    (
+        "preferences_appearance_note",
+        "Typography and Effects are not here: the terminal sets the font and its size, and Collector has no visual effects.",
+    ),
+    (
+        "preferences_font_note",
+        "The font is the terminal's: for a dyslexia-friendly one, such as OpenDyslexic Mono, pick it in the terminal's settings.",
+    ),
+    (
+        "preferences_motion_note",
+        "Nothing in Collector is animated: only the readings change, at the refresh interval. Anything animated added later will follow this setting.",
+    ),
+    (
+        "preferences_reading_note",
+        "Reading is not here: text size is the terminal's. Zoom with its settings or its keyboard shortcut.",
     ),
 ];

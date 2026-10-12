@@ -1,8 +1,8 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Gauge};
+use ratatui::widgets::Gauge;
 
+use super::style;
 use crate::app::App;
 use crate::i18n::{number, t, tf};
 
@@ -16,8 +16,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let cpu_percent = gauge_percent(f64::from(app.system.global_cpu_usage()));
     let cpu_gauge = Gauge::default()
-        .block(Block::default().title(t("cpu")).borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Cyan))
+        .block(style::block(t("cpu")))
+        .gauge_style(style::gauge())
         .percent(cpu_percent)
         .label(tf("percent", &[("value", &cpu_percent.to_string())]));
     frame.render_widget(cpu_gauge, layout[0]);
@@ -31,8 +31,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let memory_gauge = Gauge::default()
-        .block(Block::default().title(t("memory")).borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Magenta))
+        .block(style::block(t("memory")))
+        .gauge_style(style::gauge())
         .percent(gauge_percent(memory_percent))
         .label(tf(
             "used_of_total_gb",

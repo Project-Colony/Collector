@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::i18n::{Locale, t, tf};
-use crate::paths;
+use crate::{paths, theme};
 
 /// The theme a fresh install starts on, and the one an unknown theme falls
 /// back to, as in colony-ui.
@@ -59,8 +59,9 @@ pub struct Preferences {
     // The fields of colony_ui::preferences::StandardPreferences that mean
     // something in a terminal, under its names and in its JSON forms, so the
     // file reads like every other Colony program's. The font, text size and
-    // animation fields are left out: the terminal owns the font, and
-    // Collector has no animation to switch off.
+    // animations fields are left out: the terminal owns the font, and
+    // Collector has no effects for Appearance to switch off. Reduce motion
+    // stays, as Accessibility's Motion setting.
     pub selected_theme: String,
     pub selected_variant: String,
     /// An accent key such as `"violet"`, or `None` for the theme's own.
@@ -118,13 +119,64 @@ impl Preferences {
     }
 
     /// Moves `setting` `by` places through its choices, wrapping around at
-    /// either end.
+    /// either end. A toggle flips whichever way it is moved.
     pub fn step(&mut self, setting: Setting, by: isize) {
         match setting {
             Setting::Language => self.language = cycle(&Language::ALL, self.language, by),
             Setting::RefreshInterval => {
                 self.refresh_interval = cycle(&REFRESH_INTERVALS, self.refresh_interval, by);
             }
+            // Through the family's variants. Another family's row starts on
+            // its first variant going forwards, its last going backwards.
+            Setting::Theme(family) => {
+                let Some(family_meta) = theme::catalog().families.get(family) else {
+                    return;
+                };
+                let count = family_meta.variants.len() as isize;
+                let current = family_meta.variants.iter().position(|variant| {
+                    self.selected_theme == family_meta.key && self.selected_variant == variant.key
+                });
+                let variant = match current {
+                    Some(at) => (at as isize + by).rem_euclid(count),
+                    None if by < 0 => count - 1,
+                    None => 0,
+                };
+                self.set_theme(family, variant as usize);
+            }
+            // The theme's own accent, then each shared one.
+            Setting::Accent => {
+                let accents = &theme::catalog().accents;
+                let choices: Vec<Option<&str>> = std::iter::once(None)
+                    .chain(accents.iter().map(|accent| Some(accent.key.as_str())))
+                    .collect();
+                let current = theme::picked_accent(self).map(|accent| accent.key.as_str());
+                self.selected_accent = cycle(&choices, current, by).map(str::to_owned);
+                self.auto_accent = false;
+            }
+            Setting::AutoAccent => self.auto_accent = !self.auto_accent,
+            Setting::HighContrast => self.high_contrast = !self.high_contrast,
+            Setting::ReduceMotion => self.reduce_motion = !self.reduce_motion,
+        }
+    }
+
+    /// The theme picker's cards: `variant` of `family`, by position in
+    /// themes.json. Out of range does nothing.
+    pub fn set_theme(&mut self, family: usize, variant: usize) {
+        let families = &theme::catalog().families;
+        if let Some(family) = families.get(family)
+            && let Some(variant) = family.variants.get(variant)
+        {
+            self.selected_theme.clone_from(&family.key);
+            self.selected_variant.clone_from(&variant.key);
+        }
+    }
+
+    /// An accent swatch, by position in themes.json. Picking one turns auto
+    /// accent off, as in colony-ui.
+    pub fn set_accent(&mut self, accent: usize) {
+        if let Some(accent) = theme::catalog().accents.get(accent) {
+            self.selected_accent = Some(accent.key.clone());
+            self.auto_accent = false;
         }
     }
 
@@ -151,6 +203,12 @@ impl Preferences {
 pub enum Setting {
     Language,
     RefreshInterval,
+    /// A family of the theme picker, by position in themes.json.
+    Theme(usize),
+    Accent,
+    AutoAccent,
+    HighContrast,
+    ReduceMotion,
 }
 
 /// The choice `by` places from `current`, wrapping around. A current value
@@ -300,6 +358,59 @@ mod tests {
         assert_eq!(p.refresh_interval, 2.0);
         p.step(Setting::RefreshInterval, -3);
         assert_eq!(p.refresh_interval, 5.0);
+    }
+
+    #[test]
+    fn theme_and_accent_rows_pick_from_themes_json() {
+        let position = |key| {
+            let families = &theme::catalog().families;
+            families.iter().position(|f| f.key == key).unwrap()
+        };
+        let theme = |p: &Preferences| (p.selected_theme.clone(), p.selected_variant.clone());
+        let mut p = Preferences::default();
+        p.step(Setting::Theme(position("catppuccin")), 1);
+        assert_eq!(theme(&p), ("catppuccin".into(), "latte".into()));
+        p.step(Setting::Theme(position("catppuccin")), -1);
+        assert_eq!(p.selected_variant, "mocha", "wraps around backwards");
+        p.step(Setting::Theme(position("gruvbox")), -1);
+        assert_eq!(
+            theme(&p),
+            ("gruvbox".into(), "dark".into()),
+            "starts on the last"
+        );
+        p.set_theme(usize::MAX, 0);
+        assert_eq!(theme(&p), ("gruvbox".into(), "dark".into()), "out of range");
+
+        p.step(Setting::Accent, 1);
+        assert_eq!(p.selected_accent.as_deref(), Some("red"));
+        p.step(Setting::Accent, -2);
+        assert_eq!(p.selected_accent.as_deref(), Some("amber"), "wraps around");
+        p.auto_accent = true;
+        p.step(Setting::Accent, 1);
+        assert_eq!(
+            p.selected_accent.as_deref(),
+            Some("red"),
+            "from the theme's own"
+        );
+        assert!(!p.auto_accent, "picking an accent turns auto accent off");
+        p.step(Setting::Accent, -1);
+        assert_eq!(p.selected_accent, None, "the theme's own again");
+        p.set_accent(6);
+        assert_eq!(p.selected_accent.as_deref(), Some("violet"));
+
+        for (setting, flag) in [
+            (
+                Setting::AutoAccent,
+                (|p: &Preferences| p.auto_accent) as fn(&Preferences) -> bool,
+            ),
+            (Setting::HighContrast, |p| p.high_contrast),
+            (Setting::ReduceMotion, |p| p.reduce_motion),
+        ] {
+            p.step(setting, -1);
+            assert!(flag(&p), "{setting:?} turns on");
+            p.step(setting, 1);
+            assert!(!flag(&p), "{setting:?} turns off");
+        }
     }
 
     #[test]

@@ -15,8 +15,8 @@ use sysinfo::{Disk, Disks, Networks, ProcessesToUpdate, System};
 
 use crate::i18n::{self, tf};
 use crate::preferences::{self, Preferences, Setting};
-use crate::terminal;
 use crate::ui::{self, Focus, Hit, Page, preferences::Row};
+use crate::{terminal, theme};
 
 /// What a key and a click can both do. Each control sends the message its
 /// key sends, so the two can never disagree.
@@ -29,6 +29,20 @@ pub enum Message {
     /// A row of the open category that takes focus: focus it, then open or
     /// close it (a section) or move it to its next value (a setting).
     Activate(usize),
+    /// A card of the theme picker, by position in themes.json.
+    Theme { family: usize, variant: usize },
+    /// An accent swatch, by position in themes.json.
+    Accent(usize),
+}
+
+/// A line the footer shows until the next key or click.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Status {
+    /// colony-ui's `theme_applied` toast: the change was immediate, this
+    /// makes it noticeable.
+    ThemeApplied,
+    /// Something went wrong with the preferences file.
+    Problem(String),
 }
 
 pub struct App {
@@ -42,9 +56,7 @@ pub struct App {
     pub prefs: Preferences,
     /// Where changes are saved; `None` when they cannot be.
     prefs_path: Option<PathBuf>,
-    /// A message about the preferences file, shown until the next key or
-    /// click.
-    pub status: Option<String>,
+    pub status: Option<Status>,
     /// The Preferences page, while it is open.
     pub page: Option<Page>,
     /// The mouse's cell, for hover.
@@ -54,7 +66,7 @@ pub struct App {
 }
 
 impl App {
-    fn new(prefs: Preferences, prefs_path: Option<PathBuf>, status: Option<String>) -> Self {
+    fn new(prefs: Preferences, prefs_path: Option<PathBuf>, status: Option<Status>) -> Self {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -141,6 +153,14 @@ impl App {
                     page.row = 0;
                 }
             }
+            Message::Theme { family, variant } => {
+                self.prefs.set_theme(family, variant);
+                self.changed(Setting::Theme(family));
+            }
+            Message::Accent(accent) => {
+                self.prefs.set_accent(accent);
+                self.changed(Setting::Accent);
+            }
             Message::Activate(index) => {
                 let Some(page) = &mut self.page else { return };
                 page.focus = Focus::Content;
@@ -158,16 +178,24 @@ impl App {
         }
     }
 
-    /// Applies a change at once and saves it: there is no Save button.
     fn change(&mut self, setting: Setting, by: isize) {
         self.prefs.step(setting, by);
-        if setting == Setting::Language {
-            i18n::set_locale(self.prefs.language.locale());
+        self.changed(setting);
+    }
+
+    /// Applies a change at once and saves it: there is no Save button.
+    fn changed(&mut self, setting: Setting) {
+        match setting {
+            Setting::Language => i18n::set_locale(self.prefs.language.locale()),
+            Setting::Theme(_) => self.status = Some(Status::ThemeApplied),
+            _ => {}
         }
+        theme::apply(&self.prefs);
         let Some(path) = &self.prefs_path else { return };
         if let Err(err) = preferences::save(path, &self.prefs) {
             let error = err.to_string();
-            self.status = Some(tf("preferences_save_failed", &[("error", &error)]));
+            let message = tf("preferences_save_failed", &[("error", &error)]);
+            self.status = Some(Status::Problem(message));
         }
     }
 
@@ -237,7 +265,20 @@ impl App {
     fn on_mouse(&mut self, mouse: MouseEvent) {
         let position = Position::new(mouse.column, mouse.row);
         self.mouse = Some(position);
-        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+        // The wheel moves through the open category's rows, as Up and Down
+        // do, and the page scrolls with the focus.
+        let by = match mouse.kind {
+            MouseEventKind::ScrollDown => 1,
+            MouseEventKind::ScrollUp => -1,
+            MouseEventKind::Down(MouseButton::Left) => 0,
+            _ => return,
+        };
+        if by != 0 {
+            if let Some(page) = &mut self.page {
+                let last = focusable_rows(&self.prefs, page).len().saturating_sub(1);
+                page.focus = Focus::Content;
+                page.row = page.row.saturating_add_signed(by).min(last);
+            }
             return;
         }
         self.status = None;
@@ -266,8 +307,9 @@ pub fn run_app(
     prefs_path: Option<PathBuf>,
     status: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
+    theme::apply(&prefs);
     let mut terminal = terminal::enable()?;
-    let mut app = App::new(prefs, prefs_path, status);
+    let mut app = App::new(prefs, prefs_path, status.map(Status::Problem));
 
     // Checked after every poll, which waits one refresh interval at most.
     while quit_signal.load(Ordering::SeqCst) == 0 {
@@ -419,6 +461,31 @@ mod tests {
         assert!(app.page.is_some());
         app.on_mouse(click(5, 0));
         assert!(app.page.is_none());
+    }
+
+    #[test]
+    fn the_wheel_moves_through_the_rows() {
+        let mut app = App::empty();
+        let wheel = |kind| MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        app.on_mouse(wheel(MouseEventKind::ScrollDown));
+        assert!(app.page.is_none(), "nothing to scroll on the monitor");
+        app.update(Message::TogglePreferences);
+        // General: two closed sections.
+        app.on_mouse(wheel(MouseEventKind::ScrollDown));
+        app.on_mouse(wheel(MouseEventKind::ScrollDown));
+        let page = app.page.as_ref().unwrap();
+        assert_eq!(
+            (page.focus, page.row),
+            (Focus::Content, 1),
+            "stops at the last"
+        );
+        app.on_mouse(wheel(MouseEventKind::ScrollUp));
+        assert_eq!(app.page.as_ref().unwrap().row, 0);
     }
 
     #[test]

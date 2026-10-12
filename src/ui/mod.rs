@@ -11,9 +11,9 @@ mod style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::Span;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Paragraph};
 
-use crate::app::{App, Message};
+use crate::app::{App, Message, Status};
 use crate::i18n::t;
 use crate::paths;
 
@@ -30,6 +30,7 @@ pub struct Hit {
 /// Draws the screen and returns what can be clicked on it.
 pub fn render_ui(frame: &mut Frame, app: &App) -> Vec<Hit> {
     let mut hits = Vec::new();
+    frame.render_widget(Block::new().style(style::base()), frame.area());
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Fill(1),
@@ -46,7 +47,7 @@ pub fn render_ui(frame: &mut Frame, app: &App) -> Vec<Hit> {
         ..header
     };
     let open = app.page.is_some();
-    let style = style::item(open, hovered(app, button)).patch(style::title());
+    let style = style::identity(open, hovered(app, button));
     frame.render_widget(Paragraph::new(name).style(style), button);
     hits.push(Hit {
         area: button,
@@ -58,12 +59,19 @@ pub fn render_ui(frame: &mut Frame, app: &App) -> Vec<Hit> {
         None => render_monitor(frame, app, body),
     }
 
-    // Full width, where the French hints fit too. A status message about the
-    // preferences file takes the line until the next key or click.
+    // Full width, where the French hints fit too. A status takes the line
+    // until the next key or click.
     let footer_text = match (&app.status, open) {
-        (Some(status), _) => Paragraph::new(status.as_str()),
-        (None, false) => Paragraph::new(t("monitor_hint")).style(style::muted()),
-        (None, true) => Paragraph::new(t("preferences_hint")).style(style::muted()),
+        (Some(Status::ThemeApplied), _) => {
+            // As wide as the words, like a toast, not the whole line.
+            let toast = Span::styled(format!(" {} ", t("theme_applied")), style::toast());
+            Paragraph::new(toast)
+        }
+        (Some(Status::Problem(problem)), _) => {
+            Paragraph::new(problem.as_str()).style(style::warning())
+        }
+        (None, false) => Paragraph::new(t("monitor_hint")).style(style::hint()),
+        (None, true) => Paragraph::new(t("preferences_hint")).style(style::hint()),
     };
     frame.render_widget(footer_text, footer);
     hits
@@ -106,6 +114,7 @@ mod tests {
 
     use super::*;
     use crate::i18n::{self, Locale, number, tf};
+    use crate::theme;
 
     /// The buffer as text, one line per row.
     fn screen_text(buffer: &Buffer) -> String {
@@ -120,7 +129,11 @@ mod tests {
 
     /// Draws `app` at 80x24, the smallest usual terminal size.
     fn draw(app: &App) -> (String, Vec<Hit>) {
-        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("test terminal");
+        draw_at(app, 24)
+    }
+
+    fn draw_at(app: &App, height: u16) -> (String, Vec<Hit>) {
+        let mut terminal = Terminal::new(TestBackend::new(80, height)).expect("test terminal");
         let mut hits = Vec::new();
         terminal
             .draw(|frame| hits = render_ui(frame, app))
@@ -170,18 +183,21 @@ mod tests {
         }
     }
 
-    /// Each category with every section open: the page header, every
-    /// category name, every heading, section and setting are drawn whole in
-    /// both locales.
+    /// Each category with every section open, on a screen tall enough not to
+    /// scroll: the page header, every category name, every heading, section,
+    /// setting, theme card and note are drawn whole in 80 columns in both
+    /// locales.
     #[test]
-    fn the_preferences_page_fits_at_80x24_in_both_locales() {
+    fn the_preferences_page_fits_80_columns_in_both_locales() {
         for locale in [Locale::En, Locale::Fr] {
             for category in 0..preferences::CATEGORIES.len() {
                 let mut app = App::empty();
                 app.update(Message::TogglePreferences);
                 app.update(Message::Category(category));
                 let page = app.page.as_mut().expect("open");
-                page.expanded.extend(["language", "refresh"]);
+                page.expanded.extend([
+                    "language", "refresh", "theme", "colors", "preview", "vision", "motion",
+                ]);
 
                 let (screen, expected) = i18n::with_locale(locale, || {
                     let page = app.page.as_ref().expect("open");
@@ -202,14 +218,77 @@ mod tests {
                             preferences::Row::Note(text) => {
                                 expected.extend(text.split(' ').map(str::to_owned));
                             }
+                            preferences::Row::Cards(family) => {
+                                let family = &theme::catalog().families[family];
+                                let names = family.variants.iter().map(|v| v.label.text());
+                                expected.extend(names.map(str::to_owned));
+                            }
+                            preferences::Row::Preview => expected.extend(
+                                ["settings_preview_card", "settings_preview_button"]
+                                    .map(|key| t(key).to_owned()),
+                            ),
                             _ => {}
                         }
                     }
-                    (draw(&app).0, expected)
+                    (draw_at(&app, 120).0, expected)
                 });
                 assert_shown(&screen, locale, &expected);
             }
         }
+    }
+
+    /// The theme list is longer than the screen: the focused family scrolls
+    /// into view with its cards, and a click on a card applies it.
+    #[test]
+    fn the_last_theme_scrolls_into_view_and_its_cards_are_clickable() {
+        let families = &theme::catalog().families;
+        let last = families.last().expect("a family");
+        let mut app = App::empty();
+        app.update(Message::TogglePreferences);
+        app.update(Message::Category(1));
+        let page = app.page.as_mut().expect("open");
+        page.expanded.insert("theme");
+        page.focus = Focus::Content;
+        // The section header, then one row per family.
+        page.row = families.len();
+
+        let (screen, hits, names) = i18n::with_locale(Locale::En, || {
+            let names: Vec<&str> = std::iter::once(&last.label)
+                .chain(last.variants.iter().map(|variant| &variant.label))
+                .map(|label| label.text())
+                .collect();
+            let (screen, hits) = draw(&app);
+            (screen, hits, names)
+        });
+        for name in names {
+            assert!(screen.contains(name), "{name:?} is off screen:\n{screen}");
+        }
+        let card = Message::Theme {
+            family: families.len() - 1,
+            variant: 0,
+        };
+        let hit = hits.iter().find(|hit| hit.message == card).expect("a card");
+        app.update(hit.message);
+        assert_eq!(app.prefs.selected_theme, last.key);
+        assert_eq!(app.prefs.selected_variant, last.variants[0].key);
+        assert_eq!(app.status, Some(Status::ThemeApplied), "the toast");
+    }
+
+    #[test]
+    fn a_swatch_click_picks_its_accent() {
+        let mut app = App::empty();
+        app.update(Message::TogglePreferences);
+        app.update(Message::Category(1));
+        app.page.as_mut().expect("open").expanded.insert("colors");
+        app.prefs.auto_accent = true;
+        let (_, hits) = i18n::with_locale(Locale::En, || draw(&app));
+        let hit = hits
+            .iter()
+            .find(|hit| hit.message == Message::Accent(6))
+            .expect("the violet swatch");
+        app.update(hit.message);
+        assert_eq!(app.prefs.selected_accent.as_deref(), Some("violet"));
+        assert!(!app.prefs.auto_accent);
     }
 
     /// The identity button and the page's Close button send the same

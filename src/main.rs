@@ -4,6 +4,7 @@ mod i18n;
 mod paths;
 mod preferences;
 mod terminal;
+mod theme;
 mod ui;
 
 use std::env;
