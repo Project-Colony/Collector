@@ -1,6 +1,8 @@
 mod app;
 mod cli;
 mod i18n;
+mod paths;
+mod preferences;
 mod terminal;
 mod ui;
 
@@ -12,7 +14,17 @@ use cli::Mode;
 use i18n::{t, tf};
 
 fn main() -> ExitCode {
-    i18n::set_locale(i18n::Locale::system());
+    // Read first, so --help speaks the chosen language too, but only read:
+    // a file that fails to load is set aside further down, by the monitor,
+    // which can tell the user.
+    let prefs_path = preferences::path();
+    let loaded = prefs_path.as_deref().map_or_else(
+        |_| Ok(preferences::Preferences::default()),
+        preferences::load,
+    );
+    let prefs = loaded.as_ref().cloned().unwrap_or_default();
+    i18n::set_locale(prefs.language.locale());
+
     let args: Vec<OsString> = env::args_os().skip(1).collect();
     match cli::parse_args(&args) {
         Ok(Mode::Run) => {}
@@ -34,7 +46,8 @@ fn main() -> ExitCode {
         }
     };
 
-    let result = app::run_app(&quit_signal);
+    let (save_to, status) = preferences::save_target(prefs_path, &loaded);
+    let result = app::run_app(&quit_signal, prefs, save_to, status);
     let restored = terminal::restore();
     let result = result.and(restored.map_err(Into::into));
     if let Err(err) = &result {

@@ -18,6 +18,12 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system", 
 # The system language, for English or French. No dependencies of its own on
 # Linux, Windows or macOS.
 sys-locale = "0.3.2"
+# The preferences file. Read as a JSON value and taken field by field, so no
+# serde derive: it would put the Linux tree over its crate budget.
+serde_json = "1.0.154"
+# Where that file lives: the platform's local config directory, never the
+# roaming one on Windows (see src/paths.rs).
+dirs = "7.0.0"
 
 # Quit signals (SIGTERM, SIGHUP, SIGINT, SIGQUIT) set a flag the event loop
 # checks, so the terminal is restored before Collector dies of the signal.

@@ -15,7 +15,7 @@ Options:
   -h, --help     Print this help and exit
   -V, --version  Print the version and exit
 
-Keys: q or Ctrl+C quits.
+Keys: p opens and closes Preferences, q or Ctrl+C quits.
 ",
     ),
     (
@@ -40,5 +40,67 @@ Keys: q or Ctrl+C quits.
     ("used_of_total_gb", "{used} / {total} GB"),
     ("megabytes", "{value} MB"),
     ("percent", "{value}%"),
-    ("quit_hint", "q or Ctrl+C to quit"),
+    ("monitor_hint", "p: Preferences   q or Ctrl+C: quit"),
+    // The Preferences page. The settings_* keys and their strings are
+    // colony-ui's (colony_ui::i18n), copied exactly: every Colony program
+    // says the same thing in the same words.
+    ("settings_title", "Preferences"),
+    ("settings_close", "Close"),
+    ("settings_cat_general", "General"),
+    (
+        "settings_general_desc",
+        "Preferences are saved automatically.",
+    ),
+    ("settings_cat_appearance", "Appearance"),
+    (
+        "settings_appearance_desc",
+        "Adjust the theme, accents, text and visual effects.",
+    ),
+    ("settings_cat_accessibility", "Accessibility"),
+    (
+        "settings_accessibility_desc",
+        "Make the interface easier to see, read and use.",
+    ),
+    ("settings_cat_about", "About"),
+    // Collector's own.
+    (
+        "preferences_hint",
+        "↑↓ Move   Tab Column   ←→ Change   Enter Open   Esc Close",
+    ),
+    ("preferences_section_language", "Language"),
+    (
+        "preferences_language_desc",
+        "Applies at once, to every screen and message.",
+    ),
+    ("preferences_language", "Interface language"),
+    ("preferences_language_system", "Same as the system"),
+    ("language_en", "English"),
+    ("language_fr", "Français"),
+    ("preferences_section_refresh", "Refresh"),
+    (
+        "preferences_refresh_desc",
+        "How often the readings are taken. More often costs more CPU.",
+    ),
+    ("preferences_refresh_interval", "Interval"),
+    ("seconds", "{value} s"),
+    (
+        "preferences_about_desc",
+        "Collector, the Colony terminal system monitor.",
+    ),
+    ("preferences_version", "Version {version}"),
+    ("preferences_license", "License: {license}"),
+    ("preferences_source", "Source code: {url}"),
+    ("preferences_file", "Preferences file:"),
+    (
+        "preferences_set_aside",
+        "Invalid preferences set aside as preferences.json.invalid",
+    ),
+    (
+        "preferences_not_saved",
+        "Preferences will not be saved: {error}",
+    ),
+    (
+        "preferences_save_failed",
+        "Could not save the preferences: {error}",
+    ),
 ];

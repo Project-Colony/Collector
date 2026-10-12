@@ -8,11 +8,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use crossterm::cursor::Show;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+};
+use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use crossterm::{ExecutableCommand, execute};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -70,18 +72,27 @@ pub fn die_of_signal(quit_signal: &AtomicUsize) -> Option<ExitCode> {
     None
 }
 
-/// Raw mode on, alternate screen entered. [`restore`] undoes both.
+/// Raw mode on, alternate screen entered, mouse reported (clicks and
+/// movement, for the identity button, the Preferences page and hover).
+/// [`restore`] undoes all three.
 pub fn enable() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode()?;
-    io::stdout().execute(EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     Terminal::new(CrosstermBackend::new(io::stdout()))
 }
 
-/// Leaves the alternate screen, shows the cursor and turns raw mode off. Safe
-/// to run more than once, and from the panic hook.
+/// Stops the mouse reports, leaves the alternate screen, shows the cursor and
+/// turns raw mode off. Safe to run more than once, and from the panic hook.
+/// Mouse reporting left on would fill the shell with escape codes at every
+/// click.
 pub fn restore() -> io::Result<()> {
     let raw = disable_raw_mode();
-    execute!(io::stdout(), LeaveAlternateScreen, Show)?;
+    execute!(
+        io::stdout(),
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        Show
+    )?;
     raw
 }
 

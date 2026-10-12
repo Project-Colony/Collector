@@ -13,7 +13,7 @@ Options :
   -h, --help     Affiche cette aide et quitte
   -V, --version  Affiche la version et quitte
 
-Touches : q ou Ctrl+C pour quitter.
+Touches : p ouvre et ferme les Préférences, q ou Ctrl+C quitte.
 ",
     ),
     (
@@ -40,5 +40,63 @@ Touches : q ou Ctrl+C pour quitter.
     ("used_of_total_gb", "{used} / {total} Go"),
     ("megabytes", "{value} Mo"),
     ("percent", "{value} %"),
-    ("quit_hint", "q ou Ctrl+C pour quitter"),
+    ("monitor_hint", "p : Préférences   q ou Ctrl+C : quitter"),
+    ("settings_title", "Préférences"),
+    ("settings_close", "Fermer"),
+    ("settings_cat_general", "Général"),
+    (
+        "settings_general_desc",
+        "Les préférences sont enregistrées automatiquement.",
+    ),
+    ("settings_cat_appearance", "Apparence"),
+    (
+        "settings_appearance_desc",
+        "Ajustez le thème, les accents, le texte et les effets visuels.",
+    ),
+    ("settings_cat_accessibility", "Accessibilité"),
+    (
+        "settings_accessibility_desc",
+        "Rendez l'interface plus facile à voir, à lire et à utiliser.",
+    ),
+    ("settings_cat_about", "À propos"),
+    (
+        "preferences_hint",
+        "↑↓ Déplacer   Tab Colonne   ←→ Modifier   Entrée Ouvrir   Échap Fermer",
+    ),
+    ("preferences_section_language", "Langue"),
+    (
+        "preferences_language_desc",
+        "S'applique tout de suite, à tous les écrans et messages.",
+    ),
+    ("preferences_language", "Langue de l'interface"),
+    ("preferences_language_system", "Comme le système"),
+    ("language_en", "English"),
+    ("language_fr", "Français"),
+    ("preferences_section_refresh", "Actualisation"),
+    (
+        "preferences_refresh_desc",
+        "La fréquence des relevés. Plus souvent coûte plus de processeur.",
+    ),
+    ("preferences_refresh_interval", "Intervalle"),
+    ("seconds", "{value} s"),
+    (
+        "preferences_about_desc",
+        "Collector, le moniteur système de Colony pour le terminal.",
+    ),
+    ("preferences_version", "Version {version}"),
+    ("preferences_license", "Licence : {license}"),
+    ("preferences_source", "Code source : {url}"),
+    ("preferences_file", "Fichier des préférences :"),
+    (
+        "preferences_set_aside",
+        "Préférences invalides mises de côté : preferences.json.invalid",
+    ),
+    (
+        "preferences_not_saved",
+        "Les préférences ne seront pas enregistrées : {error}",
+    ),
+    (
+        "preferences_save_failed",
+        "Impossible d'enregistrer les préférences : {error}",
+    ),
 ];

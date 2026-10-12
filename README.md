@@ -37,13 +37,15 @@ locally, over SSH or inside tmux.
 - **In the terminal you already have open**: locally, over SSH (`ssh -t`) or
   inside tmux, where a desktop task manager cannot follow.
 - **Small and quiet**: a single binary of about 1 MB on Linux, with no network
-  connection and no file written (see the [privacy policy](#privacy-policy)).
+  connection and no file written except its own preferences (see
+  [Privacy](#privacy)).
 
 Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap.
 
 ## What it does
 
-One screen, refreshed every second:
+One screen, refreshed every second, or at the interval chosen in
+[Preferences](#preferences) (half a second to five seconds):
 
 - **CPU**: overall usage, as a gauge.
 - **Memory**: used and total, as a gauge.
@@ -53,8 +55,9 @@ One screen, refreshed every second:
 - **Processes**: the ten using the most CPU, with their share of the whole
   machine's CPU and their memory.
 
-`q` or Ctrl+C quits, and the terminal is restored. Everything is shown in
-English or French (see [Language](#language)).
+`q` or Ctrl+C quits, and the terminal is restored. Clicking **Collector** in
+the top-left corner, or pressing `p`, opens the [Preferences](#preferences).
+Everything is shown in English or French (see [Language](#language)).
 
 ## Installation
 
@@ -117,12 +120,52 @@ collector --version  print the version and exit (-V)
 
 | Key | Action |
 |---|---|
+| `p` | Open or close Preferences (or click **Collector**, top left) |
 | `q`, Ctrl+C | Quit |
+
+On the Preferences page:
+
+| Key | Action |
+|---|---|
+| Up, Down | Move between categories, or between sections and settings |
+| Tab, Shift+Tab | Switch between the categories and their content |
+| Enter | Open or close a section, or move a setting to its next value |
+| Left, Right | Change the focused setting |
+| Esc, `p` | Close Preferences (or click **Close**) |
+
+Collector takes the mouse for its clicks, so selecting text with the mouse
+needs the terminal's own modifier, Shift in most terminals.
 
 The terminal is restored on `q`, on Ctrl+C and when Collector panics. On Linux
 and macOS it is also restored on a quit signal from outside (SIGTERM, SIGHUP,
 SIGINT, SIGQUIT): Collector notices it within a second, puts the terminal back,
 then ends the way that signal would have ended it.
+
+### Preferences
+
+Click **Collector** in the top-left corner, or press `p`: the Preferences page
+takes the place of the boxes until you close it. Its categories are General,
+Appearance, Accessibility and About, and each section opens with Enter or a
+click. A change applies at once and is saved at once; there is no Save button.
+
+- **General**: the interface language, and how often the readings are taken
+  (every 0.5, 1, 2 or 5 seconds; more often costs more CPU).
+- **About**: the version, the license, the source code and where the
+  preferences file is.
+
+The preferences are kept in `preferences/preferences.json` under Collector's
+config directory:
+
+| Platform | Preferences file |
+|---|---|
+| Linux | `~/.config/Colony/Collector/preferences/preferences.json` (or under `$XDG_CONFIG_HOME`) |
+| Windows | `%LOCALAPPDATA%\Colony\Collector\preferences\preferences.json` |
+| macOS | `~/Library/Application Support/Colony/Collector/preferences/preferences.json` |
+
+A value Collector does not understand falls back to its default and the rest
+of the file is kept. A file that is not valid JSON is renamed to
+`preferences.json.invalid`, never overwritten, and Collector says so at the
+bottom of the screen and starts from the defaults.
 
 ### Language
 
@@ -130,8 +173,9 @@ Collector speaks French when the system language is French, and English
 otherwise, with French units and decimal commas (`1,5 Go`). On Linux the
 language comes from the first of `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG`
 that is set, so `LANGUAGE=en collector` runs it in English; on Windows and
-macOS it is the language chosen in the system settings. `collector --version`
-prints the same `collector X.Y.Z` line in both.
+macOS it is the language chosen in the system settings. The language chosen in
+[Preferences](#preferences) overrides it, for `--help` and the error messages
+too. `collector --version` prints the same `collector X.Y.Z` line in both.
 
 ## Roadmap
 
@@ -165,13 +209,18 @@ Team roles and members:
 - Committers and reviewers: [MotherSphere](https://github.com/MotherSphere)
 - Approvers: [MotherSphere](https://github.com/MotherSphere)
 
-### Privacy policy
+## Privacy
 
-Collector makes no network connection of any kind. It reads the statistics it
-shows from the operating system of the machine it runs on and draws them in
-your terminal; nothing leaves that machine. There is no telemetry, no
-analytics, no account and no update check (Colony handles updates). Collector
-writes no files.
+Collector sends no telemetry, no analytics and no crash reports.
+
+| Data | Stored or sent | Where, and why |
+|---|---|---|
+| Settings | stored | `Colony/Collector/preferences/preferences.json` in this machine's config directory: `~/.config` on Linux, `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS (see [Preferences](#preferences)) |
+| System statistics | neither | read from the operating system to draw the screen, kept in memory only |
+
+Collector connects to no server at all: it has no account, no update check
+(Colony handles updates) and no network code. Nothing it reads leaves the
+machine it runs on.
 
 ## License
 
