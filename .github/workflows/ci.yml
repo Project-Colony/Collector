@@ -34,13 +34,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Pinned to master with `toolchain: stable` rather than to the `stable`
-      # branch: that branch is rebased onto every master commit, so a SHA
-      # pinned on it stops being reachable from any branch.
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
-        with:
-          toolchain: stable
-          components: clippy, rustfmt
+      # rustup is on every GitHub-hosted runner image, so there is no
+      # third-party toolchain action to pin. Same step as the release
+      # workflow's, plus the components the Format and Clippy steps need.
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt --no-self-update
+          rustup default stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -92,9 +93,17 @@ jobs:
           [ -n "$version" ] || { echo "::error::could not read rust-version from Cargo.toml"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
-        with:
-          toolchain: ${{ steps.msrv.outputs.version }}
+      # The rustc check makes a floor that silently stopped applying fail
+      # loudly.
+      - name: Install Rust ${{ steps.msrv.outputs.version }}
+        shell: bash
+        env:
+          MSRV: ${{ steps.msrv.outputs.version }}
+        run: |
+          rustup toolchain install "$MSRV" --profile minimal --no-self-update
+          rustup default "$MSRV"
+          rustc --version | grep -q "^rustc ${MSRV}[. ]" \
+            || { echo "::error::expected rustc ${MSRV}, got $(rustc --version)"; exit 1; }
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -185,9 +194,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
-        with:
-          toolchain: stable
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
 
       - name: Build the release binary
         run: cargo build --release --locked --target x86_64-unknown-linux-gnu
@@ -207,9 +218,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
-        with:
-          toolchain: stable
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
 
       # bash rather than the default `bash -e`: with pipefail, a failing
       # cargo tree fails the step instead of counting 0 crates.
