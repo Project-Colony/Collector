@@ -17,12 +17,14 @@ Colony. Collector is the Colony one: a terminal system monitor, installed and
 updated through Colony, that runs the same on Linux, Windows and macOS,
 locally, over SSH or inside tmux.
 
-> **Status:** today's minimal monitor is used by hand on Linux and passes its
-> tests, including a pseudo-terminal run, on Windows and macOS in CI. 0.2.0
-> is the first release, and Colony installs it only with a valid signature.
-> A btop-class rewrite is in progress (see the [roadmap](#roadmap) below).
-> Known gap until then: the process list cannot be scrolled, sorted or
-> filtered.
+> **Status:** Collector is used by hand on Linux, where it restores the
+> terminal on `q`, Ctrl+C, a panic and a quit signal. On Linux, Windows and
+> macOS, CI runs its tests in English and French, including the real binary
+> in a pseudo-terminal. Every release since 0.2.0 is signed, and Colony
+> installs one only with a valid signature. Wired but untested: nobody has run
+> it by hand on macOS or Windows yet, and mouse clicks in the classic Windows
+> console (conhost) have not been tried. Known gap: the process list cannot
+> be scrolled, sorted or filtered yet (see the [roadmap](#roadmap)).
 
 ## Why Collector
 
@@ -37,10 +39,10 @@ locally, over SSH or inside tmux.
 - **In the terminal you already have open**: locally, over SSH (`ssh -t`) or
   inside tmux, where a desktop task manager cannot follow.
 - **Small and quiet**: a single binary of about 1 MB on Linux, with no network
-  connection and no file written (see the [privacy policy](#privacy-policy)).
+  connection and no file written except its own preferences (see the
+  [privacy policy](#privacy-policy)).
 
-Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap,
-and adds English and French and the Colony palettes on the way.
+Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap.
 
 ## What it does
 
@@ -126,11 +128,12 @@ then ends the way that signal would have ended it.
 
 ## Roadmap
 
-Each step is one release.
+Each step is one minor release. Patch releases in between only fix bugs.
 
 - **0.2.0**: release pipeline, signed builds, `--help` and `--version`, and a terminal restored on quit and on panic.
-- **0.3.0**: core rewrite: Linux reads `/proc` and `/sys` directly; CPU, memory, disk, network and process boxes with correct rates; the terminal restored after crashes too; English and French.
-- **0.4.0**: Preferences page, Colony palettes and accents, mouse support.
+  0.2.1 fixed a crash when a reading went over 100%, restored the terminal on quit signals too, left loopback traffic out of the network rates and listed disks by mount point.
+- **0.3.0**: English and French; a Preferences page, saved under the Colony folder; the Colony themes and accents, with high contrast and reduced motion; mouse support.
+- **0.4.0**: core rewrite: Linux reads `/proc` and `/sys` directly; btop-class CPU, memory, disk, network and process boxes with correct rates.
 - **0.5.0**: process depth: tree view, detail panel, signals, renice, filtering.
 - **0.6.0**: sensors and hardware: temperatures, frequencies, disk I/O, battery.
 - **0.7.0**: GPU monitoring.
@@ -144,17 +147,50 @@ How a release is cut, signed and published:
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+Every release asset is signed by the Project Colony organisation in CI, never on
+a developer machine. Next to each asset on the release page:
 
-Windows builds are Authenticode-signed this way once the SignPath Foundation
-has accepted the project; until then they ship without Authenticode. Every
-release asset, on every platform, is always signed with the Project-Colony
-ed25519 release key, and Colony verifies that signature before installing.
+| File | What it is |
+|---|---|
+| `<asset>.sig` | an ed25519 signature over the asset, made with the organisation's release key |
+| `<asset>.meta` | three lines binding the asset to its file name, its sha256 and the release version |
+| `<asset>.meta.sig` | an ed25519 signature over the `.meta` |
 
-Team roles and members:
+The private key is an organisation secret, used only by the shared
+[sign-and-publish workflow](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/.github/workflows/sign-and-publish.yml)
+in a job that builds nothing; the jobs that compile Collector never see it.
+Colony checks all three files before it installs or updates Collector, and
+refuses a release older than the one installed. To check a download yourself
+with OpenSSL 3 (the same commands work for every asset):
+
+```bash
+cat > colony-release.pub <<'EOF'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEARNjg3Nn8H6/aBg1unwGjkUTcrdTxERNefVaqU8cFu0s=
+-----END PUBLIC KEY-----
+EOF
+a=collector-linux
+openssl pkeyutl -verify -pubin -inkey colony-release.pub -rawin -in "$a" -sigfile "$a.sig"
+openssl pkeyutl -verify -pubin -inkey colony-release.pub -rawin -in "$a.meta" -sigfile "$a.meta.sig"
+cat "$a.meta"     # version=<tag>, asset=<file name>, sha256=<digest>
+sha256sum "$a"    # the digest must equal the sha256 line
+```
+
+How releases are built, signed and published:
+[design/releases.md](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/releases.md#5-signing).
+
+<!--
+Add the following only once SignPath signs the Windows build, that is once
+`signpath-project-slug` is set in .github/workflows/release.yml. Before that it
+would promise a signature the .exe does not carry.
+
+Windows releases are also Authenticode-signed. Free code signing provided by
+[SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
 
 - Committers and reviewers: [MotherSphere](https://github.com/MotherSphere)
 - Approvers: [MotherSphere](https://github.com/MotherSphere)
+-->
 
 ### Privacy policy
 

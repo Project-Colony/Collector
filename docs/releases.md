@@ -56,7 +56,8 @@ gh workflow run release.yml -R Project-Colony/Collector --ref v0.2.0 -f tag=v0.2
 
 Each step of the [roadmap](../README.md#roadmap) is one minor release. The
 release pull request is merged only when that step is done; until then it
-keeps collecting commits.
+keeps collecting commits. A release pull request that holds only fixes is a
+patch release and may be merged between steps, as 0.2.1 was.
 
 `release-please-config.json` is the organisation template unchanged, so
 `"bump-minor-pre-major"` is `false`: a single `feat!:` commit or
@@ -66,8 +67,8 @@ someone would mark that way, hence the rule: no `!` and no `BREAKING CHANGE:`
 footer before 1.0. Describe the break in the commit body instead. 1.0.0 itself
 is requested with a `Release-As: 1.0.0` footer.
 
-The manifest starts at 0.1.0, the version that predates this pipeline, and no
-release or tag for it exists. release-please then counts every commit on
-`main` and bumps from 0.1.0: a `feat` commit makes the first release 0.2.0. Its
-`initial-version` option would not help here: the `rust` release type ignores
+The manifest started at 0.1.0, the version that predates this pipeline, and no
+release or tag for it exists. release-please then counted every commit on
+`main` and bumped from 0.1.0: a `feat` commit made the first release 0.2.0. Its
+`initial-version` option would not have helped: the `rust` release type ignores
 it.
