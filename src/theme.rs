@@ -5,7 +5,8 @@
 //! colony-ui reads the same tokens, but it is built on iced, which a terminal
 //! program cannot carry (see src/paths.rs). So the parts a terminal needs are
 //! ported from its theme.rs: the (family, variant) resolver with its Gruvbox
-//! dark fallback, the high-contrast derivation and `contrast_on`.
+//! dark fallback, the high-contrast derivation and `contrast_on` with the
+//! ink and paper of `contrastEnds`.
 //!
 //! Every colour Collector draws comes from here: no other file names one.
 
@@ -59,13 +60,13 @@ macro_rules! palette {
         }
 
         impl Palette {
-            fn from_json(palette: &Value) -> Option<Self> {
+            fn from_json(palette: &Value, ends: ContrastEnds) -> Option<Self> {
                 let color = |field| hex(palette.get(field)?);
                 let accent = color("accent_blue")?;
                 Some(Self {
                     $($field: color(stringify!($field))?,)*
                     accent,
-                    on_accent: contrast_on(accent),
+                    on_accent: readable_end(accent, ends),
                 })
             }
 
@@ -153,7 +154,11 @@ pub struct Catalog {
     /// In the order themes.json lists them, which is the pickers' order.
     pub families: Vec<Family>,
     pub accents: Vec<Accent>,
+    /// Text on a fill: `contrastEnds`' ink, then paper.
+    contrast_ends: ContrastEnds,
 }
+
+type ContrastEnds = [Color; 2];
 
 /// Every family, variant and accent in themes.json, read once.
 pub fn catalog() -> &'static Catalog {
@@ -174,6 +179,14 @@ fn parse(text: &str) -> Catalog {
     let key = |value: &Value| value.get("key")?.as_str().map(str::to_owned);
     let label = |value: &Value| Label::from_json(value.get("label")?);
 
+    // Pure black and white stand in for an end the file lacks.
+    let ends = json.get("contrastEnds");
+    let end = |name: &str, fallback| ends.and_then(|e| hex(e.get(name)?)).unwrap_or(fallback);
+    let contrast_ends = [
+        end("ink", Color::Rgb(0, 0, 0)),
+        end("paper", Color::Rgb(255, 255, 255)),
+    ];
+
     let variant = |value: &Value| {
         let swatch = value.get("swatch")?;
         Some(Variant {
@@ -181,7 +194,7 @@ fn parse(text: &str) -> Catalog {
             label: label(value)?,
             swatch_bg: hex(swatch.get("bg")?)?,
             swatch_accent: hex(swatch.get("accent")?)?,
-            palette: Palette::from_json(value.get("palette")?)?,
+            palette: Palette::from_json(value.get("palette")?, contrast_ends)?,
         })
     };
     let families = list("families")
@@ -207,7 +220,11 @@ fn parse(text: &str) -> Catalog {
             })
         })
         .collect();
-    Catalog { families, accents }
+    Catalog {
+        families,
+        accents,
+        contrast_ends,
+    }
 }
 
 /// `"#rrggbb"`, the only form themes.json writes.
@@ -359,16 +376,18 @@ fn is_light(color: Color) -> bool {
     0.299 * r + 0.587 * g + 0.114 * b > 0.5
 }
 
-/// colony-ui's `contrast_on`: near-black or near-white, whichever reads
-/// better on `background` by WCAG contrast.
+/// colony-ui's `contrast_on`: the ink or the paper of `contrastEnds`,
+/// whichever reads better on `background` by WCAG contrast.
 pub fn contrast_on(background: Color) -> Color {
-    // colony-ui's INK (0.08, 0.08, 0.10) and PAPER (0.97, 0.98, 1.0).
-    const INK: Color = Color::Rgb(20, 20, 26);
-    const PAPER: Color = Color::Rgb(247, 250, 255);
-    if contrast_ratio(INK, background) >= contrast_ratio(PAPER, background) {
-        INK
+    readable_end(background, catalog().contrast_ends)
+}
+
+/// [`contrast_on`] with the ends given, for the catalog still being read.
+fn readable_end(background: Color, [ink, paper]: ContrastEnds) -> Color {
+    if contrast_ratio(ink, background) >= contrast_ratio(paper, background) {
+        ink
     } else {
-        PAPER
+        paper
     }
 }
 
@@ -472,16 +491,18 @@ mod tests {
 
     #[test]
     fn text_on_a_fill_is_whichever_end_reads_better() {
+        // colony-ui's INK (0.08, 0.08, 0.10) and PAPER (0.97, 0.98, 1.0).
+        let (ink, paper) = (Color::Rgb(20, 20, 26), Color::Rgb(247, 250, 255));
         assert_eq!(
-            contrast_on(Color::Rgb(255, 255, 255)),
-            Color::Rgb(20, 20, 26)
+            catalog().contrast_ends,
+            [ink, paper],
+            "contrastEnds left colony-ui's ends"
         );
-        assert_eq!(contrast_on(Color::Rgb(0, 0, 0)), Color::Rgb(247, 250, 255));
+
+        assert_eq!(contrast_on(Color::Rgb(255, 255, 255)), ink);
+        assert_eq!(contrast_on(Color::Rgb(0, 0, 0)), paper);
         // colony-ui's own example: green takes ink, not paper.
-        assert_eq!(
-            contrast_on(Color::Rgb(0x55, 0xb8, 0x7a)),
-            Color::Rgb(20, 20, 26)
-        );
+        assert_eq!(contrast_on(Color::Rgb(0x55, 0xb8, 0x7a)), ink);
     }
 
     #[test]
