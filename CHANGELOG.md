@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/Project-Colony/Collector/compare/v0.2.1...v0.3.0) (2026-10-14)
+
+
+### Features
+
+* add French, a Preferences page saved under Colony/Collector, and the Colony themes and accents with high contrast ([#13](https://github.com/Project-Colony/Collector/issues/13)) ([d3be277](https://github.com/Project-Colony/Collector/commit/d3be277bfb3db127c49bd959116d069333d1a425))
+
+
+### Fixes
+
+* keep every set-aside preferences file, leave unreadable ones in place, and mute unselected Preferences categories ([#15](https://github.com/Project-Colony/Collector/issues/15)) ([51b5eb6](https://github.com/Project-Colony/Collector/commit/51b5eb68ad97f13b7eae0ea222d46f633852e5e7))
+
+
+### Documentation
+
+* re-cut the roadmap around what 0.3.0 ships, follow the current README signing template and install Rust with rustup ([#12](https://github.com/Project-Colony/Collector/issues/12)) ([3a1ebe1](https://github.com/Project-Colony/Collector/commit/3a1ebe1b94fa2dd3092cb976c547d1c63a6669e2))
+
 ## [0.2.1](https://github.com/Project-Colony/Collector/compare/v0.2.0...v0.2.1) (2026-10-09)
 
 
