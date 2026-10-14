@@ -337,7 +337,8 @@ pub fn render(frame: &mut Frame, app: &App, page: &Page, area: Rect, hits: &mut 
             height: 1,
             ..inner
         };
-        let style = style::item(index == page.category, hovered(app, item));
+        // Muted unless selected, which the accent's on_accent text overrides.
+        let style = style::muted().patch(style::item(index == page.category, hovered(app, item)));
         frame.render_widget(Paragraph::new(format!(" {label}")).style(style), item);
         hits.push(Hit {
             area: item,
