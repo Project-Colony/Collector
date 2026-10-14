@@ -278,6 +278,10 @@
       "cssVar": "--colony-accent-amber"
     }
   ],
+  "contrastEnds": {
+    "ink": "#14141a",
+    "paper": "#f7faff"
+  },
   "families": [
     {
       "key": "catppuccin",
