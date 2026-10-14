@@ -185,8 +185,10 @@ config directory:
 
 A value Collector does not understand falls back to its default and the rest
 of the file is kept. A file that is not valid JSON is renamed to
-`preferences.json.invalid`, never overwritten, and Collector says so at the
-bottom of the screen and starts from the defaults.
+`preferences.json.invalid` (or `.invalid.1`, `.invalid.2`... so an earlier copy
+is never overwritten), and Collector says so at the bottom of the screen and
+starts from the defaults. A file Collector cannot read at all stays where it
+is, and nothing is saved until the next start.
 
 ### Language
 

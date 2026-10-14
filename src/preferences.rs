@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::i18n::{Locale, t, tf};
+use crate::i18n::{Locale, tf};
 use crate::{paths, theme};
 
 /// The theme a fresh install starts on, and the one an unknown theme falls
@@ -227,11 +227,12 @@ pub fn path() -> io::Result<PathBuf> {
 }
 
 /// The preferences at `path`, or the defaults when there is no file yet. An
-/// error means the file exists but cannot be read or is not JSON; it is left
-/// untouched.
+/// error means the file exists but cannot be read, or is not JSON (kind
+/// `InvalidData`); it is left untouched.
 pub fn load(path: &Path) -> io::Result<Preferences> {
     match fs::read_to_string(path) {
-        Ok(text) => Preferences::from_json(&text).map_err(io::Error::other),
+        Ok(text) => Preferences::from_json(&text)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Preferences::default()),
         Err(err) => Err(err),
     }
@@ -239,11 +240,12 @@ pub fn load(path: &Path) -> io::Result<Preferences> {
 
 /// Writes through a temporary file in the same directory, then renames it
 /// over the old one: a crash or a full disk mid-write leaves the previous file
-/// whole rather than half of a new one.
+/// whole rather than half of a new one. The temporary name carries the process
+/// id, so two Collectors saving at once never write into the same file.
 pub fn save(path: &Path, preferences: &Preferences) -> io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(dir)?;
-    let temporary = with_suffix(path, ".tmp");
+    let temporary = with_suffix(path, &format!(".{}.tmp", std::process::id()));
     let written = File::create(&temporary).and_then(|mut file| {
         file.write_all(preferences.to_json().as_bytes())?;
         file.sync_all()
@@ -256,26 +258,48 @@ pub fn save(path: &Path, preferences: &Preferences) -> io::Result<()> {
 }
 
 /// Where the monitor saves, and what the status line tells the user about the
-/// file, given what [`path`] and [`load`] returned. A file that failed to load
-/// is renamed to `preferences.json.invalid` first, so that saving never
-/// overwrites something the user may want back. If even that fails, nothing
-/// is saved this session.
+/// file, given what [`path`] and [`load`] returned. A file that is not valid
+/// preferences is renamed to `preferences.json.invalid` first (`.invalid.1`,
+/// `.invalid.2`... when an earlier one is there), so that saving never
+/// overwrites something the user may want back. A file that cannot be read at
+/// all stays where it is, and nothing is saved this session; nor is it when
+/// the rename fails.
 pub fn save_target(
     path: io::Result<PathBuf>,
     loaded: &io::Result<Preferences>,
 ) -> (Option<PathBuf>, Option<String>) {
-    let not_saved = |err: io::Error| {
+    let not_saved = |err: &io::Error| {
         let message = tf("preferences_not_saved", &[("error", &err.to_string())]);
         (None, Some(message))
     };
     match (path, loaded) {
-        (Err(err), _) => not_saved(err),
+        (Err(err), _) => not_saved(&err),
         (Ok(path), Ok(_)) => (Some(path), None),
-        (Ok(path), Err(_)) => match fs::rename(&path, with_suffix(&path, ".invalid")) {
-            Ok(()) => (Some(path), Some(t("preferences_set_aside").to_owned())),
-            Err(err) => not_saved(err),
-        },
+        (Ok(path), Err(err)) if err.kind() == io::ErrorKind::InvalidData => {
+            let aside = set_aside_name(&path);
+            match fs::rename(&path, &aside) {
+                Ok(()) => {
+                    let file = aside.file_name().unwrap_or_default().to_string_lossy();
+                    let message = tf("preferences_set_aside", &[("file", &file)]);
+                    (Some(path), Some(message))
+                }
+                Err(err) => not_saved(&err),
+            }
+        }
+        (Ok(_), Err(err)) => not_saved(err),
     }
+}
+
+/// The first of `<path>.invalid`, `<path>.invalid.1`, `<path>.invalid.2`...
+/// that does not exist yet.
+fn set_aside_name(path: &Path) -> PathBuf {
+    let mut aside = with_suffix(path, ".invalid");
+    let mut n = 0;
+    while aside.exists() {
+        n += 1;
+        aside = with_suffix(path, &format!(".invalid.{n}"));
+    }
+    aside
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
@@ -429,7 +453,8 @@ mod tests {
         };
         save(&path, &preferences).unwrap();
         assert_eq!(load(&path).unwrap(), preferences);
-        assert!(!with_suffix(&path, ".tmp").exists(), "temporary file left");
+        let temporary = with_suffix(&path, &format!(".{}.tmp", std::process::id()));
+        assert!(!temporary.exists(), "temporary file left");
 
         // No accent: left out, as colony-ui writes it, and read back as none.
         let preferences = Preferences::default();
@@ -472,6 +497,39 @@ mod tests {
         save(&path, &Preferences::default()).unwrap();
         assert_eq!(load(&path).unwrap(), Preferences::default());
         assert!(with_suffix(&path, ".invalid").exists());
+
+        // A second bad file goes next to the first, which stays as it was.
+        fs::write(&path, "second").unwrap();
+        let loaded = load(&path);
+        let (target, status) = save_target(Ok(path.clone()), &loaded);
+        assert_eq!(target.as_deref(), Some(path.as_path()));
+        assert!(status.unwrap().contains("preferences.json.invalid.1"));
+        assert_eq!(
+            fs::read_to_string(with_suffix(&path, ".invalid")).unwrap(),
+            "{ not json"
+        );
+        assert_eq!(
+            fs::read_to_string(with_suffix(&path, ".invalid.1")).unwrap(),
+            "second"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_file_stays_where_it_is() {
+        let dir = TempDir::new("unreadable");
+        fs::create_dir_all(&dir.0).unwrap();
+        // A directory where the file should be: it cannot be read, but it is
+        // not a bad preferences file either.
+        let path = dir.0.join("preferences.json");
+        fs::create_dir(&path).unwrap();
+
+        let loaded = load(&path);
+        assert!(loaded.is_err());
+        let (target, status) = save_target(Ok(path.clone()), &loaded);
+        assert_eq!(target, None, "nothing is saved");
+        assert!(status.is_some(), "the user is told");
+        assert!(path.is_dir(), "left where it is");
+        assert!(!with_suffix(&path, ".invalid").exists());
     }
 
     #[test]

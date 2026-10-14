@@ -134,7 +134,7 @@ Touches : p ouvre et ferme les Préférences, q ou Ctrl+C quitte.
     ("preferences_file", "Fichier des préférences :"),
     (
         "preferences_set_aside",
-        "Préférences invalides mises de côté : preferences.json.invalid",
+        "Préférences invalides mises de côté : {file}",
     ),
     (
         "preferences_not_saved",

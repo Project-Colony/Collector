@@ -137,7 +137,7 @@ Keys: p opens and closes Preferences, q or Ctrl+C quits.
     ("preferences_file", "Preferences file:"),
     (
         "preferences_set_aside",
-        "Invalid preferences set aside as preferences.json.invalid",
+        "Invalid preferences set aside as {file}",
     ),
     (
         "preferences_not_saved",
