@@ -167,6 +167,25 @@ jobs:
           print("colony.json is valid")
           PY
 
+  # config/themes.json is a copy of what Resources generates, never edited
+  # here. A theme added or changed there fails this job until the copy is
+  # refreshed, so Collector cannot fall behind the other Colony programs.
+  themes:
+    name: themes.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare with Resources main
+        run: |
+          url=https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/themes.json
+          curl -fsSL "$url" -o "$RUNNER_TEMP/themes.json"
+          cmp -s "$RUNNER_TEMP/themes.json" config/themes.json || {
+            echo "::error::config/themes.json differs from Resources main. Refresh it: curl -fsSL $url -o config/themes.json"
+            exit 1
+          }
+          echo "config/themes.json matches Resources main"
+
   # Budgets from the design: the stripped Linux x86_64 release binary stays at
   # or under 3 MB, built exactly as the release workflow builds it.
   size:

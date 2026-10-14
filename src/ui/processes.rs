@@ -1,9 +1,10 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Row, Table};
+use ratatui::widgets::{Row, Table};
 
+use super::style;
 use crate::app::App;
+use crate::i18n::{number, t, tf};
 
 const PROCESS_LIMIT: usize = 10;
 
@@ -20,8 +21,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let cpu_usage = process.cpu_usage() / cpu_count;
         Row::new(vec![
             process.name().to_string_lossy().into_owned(),
-            format!("{:.1}%", cpu_usage),
-            format!("{:.1} MB", process.memory() as f64 / 1_048_576.0),
+            tf("percent", &[("value", &number(f64::from(cpu_usage), 1))]),
+            tf(
+                "megabytes",
+                &[("value", &number(process.memory() as f64 / 1_048_576.0, 1))],
+            ),
         ])
     });
 
@@ -33,12 +37,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Percentage(25),
         ],
     )
-    .header(Row::new(vec!["Process", "CPU", "Memory"]).style(Style::default().fg(Color::Green)))
-    .block(
-        Block::default()
-            .title("Top Processes")
-            .borders(Borders::ALL),
-    );
+    .header(Row::new(vec![t("process"), t("cpu"), t("memory")]).style(style::secondary()))
+    .block(style::block(t("top_processes")));
 
     frame.render_widget(table, area);
 }

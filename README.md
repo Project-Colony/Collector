@@ -21,9 +21,15 @@ locally, over SSH or inside tmux.
 > Windows and macOS, including the real binary in a pseudo-terminal: it quits
 > on `q` on all three, and on Linux and macOS the test also checks that the
 > terminal is restored, after `q` and after SIGTERM. Every release since 0.2.0
-> is signed, and Colony installs one only with a valid signature. Untested:
-> nobody has run it by hand on macOS or Windows yet. Known gap: the process
-> list cannot be scrolled, sorted or filtered yet (see the [roadmap](#roadmap)).
+> is signed, and Colony installs one only with a valid signature. English and
+> French, the Preferences page and the Colony themes are new for 0.3.0 and
+> tested in CI only: the monitor and every Preferences category are drawn 80
+> columns wide in both languages, and the pseudo-terminal run opens and closes
+> Preferences. Untested: nobody has run it by hand on macOS or Windows yet.
+> Known gap: the process list cannot be scrolled, sorted or filtered yet (see
+> the [roadmap](#roadmap)). Colours are 24-bit when the terminal says it shows
+> them (`COLORTERM=truecolor` or `24bit`, or Windows Terminal), and the nearest
+> of the xterm 256 colours otherwise.
 
 ## Why Collector
 
@@ -37,15 +43,16 @@ locally, over SSH or inside tmux.
   installs, updates and checks.
 - **In the terminal you already have open**: locally, over SSH (`ssh -t`) or
   inside tmux, where a desktop task manager cannot follow.
-- **Small and quiet**: a single binary of about 1 MB on Linux, with no network
-  connection and no file written (see the [privacy policy](#privacy-policy)).
+- **Small and quiet**: a single binary of about 1.3 MB on Linux, with no network
+  connection and no file written except its own preferences (see
+  [Privacy](#privacy)).
 
-Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap,
-and adds English and French and the Colony palettes on the way.
+Today btop and bottom show far more. The [roadmap](#roadmap) closes that gap.
 
 ## What it does
 
-One screen, refreshed every second:
+One screen, refreshed every second, or at the interval chosen in
+[Preferences](#preferences) (half a second to five seconds):
 
 - **CPU**: overall usage, as a gauge.
 - **Memory**: used and total, as a gauge.
@@ -55,7 +62,10 @@ One screen, refreshed every second:
 - **Processes**: the ten using the most CPU, with their share of the whole
   machine's CPU and their memory.
 
-`q` or Ctrl+C quits, and the terminal is restored.
+`q` or Ctrl+C quits, and the terminal is restored. Clicking **Collector** in
+the top-left corner, or pressing `p`, opens the [Preferences](#preferences).
+Everything is shown in English or French (see [Language](#language)), in the
+Colony theme and accent chosen there, with high contrast if asked for.
 
 ## Installation
 
@@ -118,12 +128,75 @@ collector --version  print the version and exit (-V)
 
 | Key | Action |
 |---|---|
+| `p` | Open or close Preferences (or click **Collector**, top left) |
 | `q`, Ctrl+C | Quit |
+
+On the Preferences page:
+
+| Key | Action |
+|---|---|
+| Up, Down | Move between categories, or between sections and settings |
+| Tab, Shift+Tab | Switch between the categories and their content |
+| Enter | Open or close a section, or move a setting to its next value |
+| Left, Right | Change the focused setting; on a theme, move through its variants |
+| Esc, `p` | Close Preferences (or click **Close**) |
+
+The mouse wheel moves through the open category, and a click on a theme card
+or an accent swatch picks it. Collector takes the mouse for this, so selecting
+text with the mouse needs the terminal's own modifier, Shift in most
+terminals.
 
 The terminal is restored on `q`, on Ctrl+C and when Collector panics. On Linux
 and macOS it is also restored on a quit signal from outside (SIGTERM, SIGHUP,
 SIGINT, SIGQUIT): Collector notices it within a second, puts the terminal back,
 then ends the way that signal would have ended it.
+
+### Preferences
+
+Click **Collector** in the top-left corner, or press `p`: the Preferences page
+takes the place of the boxes until you close it. Its categories are General,
+Appearance, Accessibility and About, and each section opens with Enter or a
+click. A change applies at once and is saved at once; there is no Save button.
+
+- **General**: the interface language, and how often the readings are taken
+  (every 0.5, 1, 2 or 5 seconds; more often costs more CPU).
+- **Appearance**: the theme, from every Colony theme family and its light and
+  dark variants; the accent, one of the eight shared Colony accents or the
+  theme's own; and a live preview. The themes come from
+  [Project-Colony-Resources](https://github.com/Project-Colony/Project-Colony-Resources),
+  the same ones every Colony program offers. Typography and Effects are left
+  out: the terminal sets the font and its size, and Collector has no visual
+  effects.
+- **Accessibility**: high contrast, which moves text and borders away from the
+  background of whichever theme is on, and reduce motion (Collector animates
+  nothing today). A dyslexia-friendly font or larger text is set in the
+  terminal.
+- **About**: the version, the license, the source code and where the
+  preferences file is.
+
+The preferences are kept in `preferences/preferences.json` under Collector's
+config directory:
+
+| Platform | Preferences file |
+|---|---|
+| Linux | `~/.config/Colony/Collector/preferences/preferences.json` (or under `$XDG_CONFIG_HOME`) |
+| Windows | `%LOCALAPPDATA%\Colony\Collector\preferences\preferences.json` |
+| macOS | `~/Library/Application Support/Colony/Collector/preferences/preferences.json` |
+
+A value Collector does not understand falls back to its default and the rest
+of the file is kept. A file that is not valid JSON is renamed to
+`preferences.json.invalid`, never overwritten, and Collector says so at the
+bottom of the screen and starts from the defaults.
+
+### Language
+
+Collector speaks French when the system language is French, and English
+otherwise, with French units and decimal commas (`1,5 Go`). On Linux the
+language comes from the first of `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG`
+that is set, so `LANGUAGE=en collector` runs it in English; on Windows and
+macOS it is the language chosen in the system settings. The language chosen in
+[Preferences](#preferences) overrides it, for `--help` and the error messages
+too. `collector --version` prints the same `collector X.Y.Z` line in both.
 
 ## Roadmap
 
@@ -191,13 +264,18 @@ Windows releases are also Authenticode-signed. Free code signing provided by
 - Approvers: [MotherSphere](https://github.com/MotherSphere)
 -->
 
-### Privacy policy
+## Privacy
 
-Collector makes no network connection of any kind. It reads the statistics it
-shows from the operating system of the machine it runs on and draws them in
-your terminal; nothing leaves that machine. There is no telemetry, no
-analytics, no account and no update check (Colony handles updates). Collector
-writes no files.
+Collector sends no telemetry, no analytics and no crash reports.
+
+| Data | Stored or sent | Where, and why |
+|---|---|---|
+| Settings | stored | `Colony/Collector/preferences/preferences.json` in this machine's config directory: `~/.config` on Linux, `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS (see [Preferences](#preferences)) |
+| System statistics | neither | read from the operating system to draw the screen, kept in memory only |
+
+Collector connects to no server at all: it has no account, no update check
+(Colony handles updates) and no network code. Nothing it reads leaves the
+machine it runs on.
 
 ## License
 

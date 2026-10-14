@@ -1,9 +1,12 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Gauge};
+use ratatui::widgets::Gauge;
 
+use super::style;
 use crate::app::App;
+use crate::i18n::{number, t, tf};
+
+const GIB: f64 = 1_073_741_824.0;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let layout = Layout::default()
@@ -11,11 +14,12 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    let cpu_usage = app.system.global_cpu_usage();
+    let cpu_percent = gauge_percent(f64::from(app.system.global_cpu_usage()));
     let cpu_gauge = Gauge::default()
-        .block(Block::default().title("CPU").borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Cyan))
-        .percent(gauge_percent(f64::from(cpu_usage)));
+        .block(style::block(t("cpu")))
+        .gauge_style(style::gauge())
+        .percent(cpu_percent)
+        .label(tf("percent", &[("value", &cpu_percent.to_string())]));
     frame.render_widget(cpu_gauge, layout[0]);
 
     let total_memory = app.system.total_memory() as f64;
@@ -27,13 +31,15 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let memory_gauge = Gauge::default()
-        .block(Block::default().title("Memory").borders(Borders::ALL))
-        .gauge_style(Style::default().fg(Color::Magenta))
+        .block(style::block(t("memory")))
+        .gauge_style(style::gauge())
         .percent(gauge_percent(memory_percent))
-        .label(format!(
-            "{:.1} / {:.1} GB",
-            used_memory / 1_073_741_824.0,
-            total_memory / 1_073_741_824.0
+        .label(tf(
+            "used_of_total_gb",
+            &[
+                ("used", &number(used_memory / GIB, 1)),
+                ("total", &number(total_memory / GIB, 1)),
+            ],
         ));
     frame.render_widget(memory_gauge, layout[1]);
 }

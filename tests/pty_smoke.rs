@@ -1,7 +1,8 @@
 //! Runs the real binary in a pseudo-terminal (ConPTY on Windows), waits for
 //! the first frame, quits it (q, or SIGTERM on Unix) and checks that Collector
 //! exits and, on Unix, hands the terminal back the way it found it: same
-//! escape sequences last, same line discipline (raw mode off).
+//! escape sequences last, same line discipline (raw mode off). One run opens
+//! and closes Preferences on the way.
 
 use std::io::{Read, Write};
 #[cfg(unix)]
@@ -20,8 +21,12 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(15);
 /// A box title from the first frame. ConPTY renders the screen itself and
 /// need not pass escape sequences such as the alternate-screen switch through,
 /// so the test waits for text rather than for a sequence. One word: ratatui
-/// skips a blank cell with a cursor move, so a space splits text in two.
-const FRAME_MARKER: &[u8] = b"Network";
+/// skips a blank cell with a cursor move, so a space splits text in two. And
+/// the same in English and French, as the test runs in the system language.
+const FRAME_MARKER: &[u8] = b"CPU";
+/// A category name from the Preferences page, cut before the one letter that
+/// differs between English (Accessibility) and French (Accessibilité).
+const PAGE_MARKER: &[u8] = b"Accessibilit";
 /// Cursor position request. ConPTY sends one when it starts and waits for the
 /// answer, as a real terminal would give.
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
@@ -54,6 +59,25 @@ impl Output {
             self.answered += 1;
         }
         alive
+    }
+
+    /// Pumps until `needle` has been written more than `seen` times. A panic
+    /// here drops the pseudo-terminal, which hangs Collector up.
+    fn wait_for(&mut self, needle: &[u8], seen: usize, what: &str) {
+        let deadline = Instant::now() + FIRST_FRAME_TIMEOUT;
+        while count(&self.bytes, needle) <= seen {
+            if Instant::now() > deadline || !self.pump(Duration::from_millis(100)) {
+                panic!(
+                    "no {what} within {FIRST_FRAME_TIMEOUT:?}; output ends with:\n{}",
+                    self.tail()
+                );
+            }
+        }
+    }
+
+    fn press(&mut self, keys: &[u8]) {
+        self.writer.write_all(keys).expect("press a key");
+        self.writer.flush().expect("press a key");
     }
 
     fn tail(&self) -> String {
@@ -94,6 +118,16 @@ fn run_and_quit(how: &str, quit: impl FnOnce(&mut Output, Option<u32>)) -> (Exit
         .local_flags;
     let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_collector"));
     cmd.env("TERM", "xterm-256color");
+    // Keeps the preferences of whoever runs the tests out of them (Linux and
+    // macOS; Windows reads its folders from the system, and its CI runners
+    // have no preferences file). Nothing here changes a preference, so
+    // nothing is written.
+    let config_home = std::env::temp_dir().join(format!("collector-pty-{}", std::process::id()));
+    cmd.env("XDG_CONFIG_HOME", &config_home);
+    cmd.env("HOME", &config_home);
+    // Without a directory of its own, the child would start in HOME, which
+    // does not exist.
+    cmd.cwd(std::env::temp_dir());
     let mut child = pair.slave.spawn_command(cmd).expect("start collector");
     // Only the child may hold the terminal side open, or on Unix the reader
     // would never see the end of the output.
@@ -173,9 +207,25 @@ fn run_and_quit(how: &str, quit: impl FnOnce(&mut Output, Option<u32>)) -> (Exit
 
 #[test]
 fn quits_on_q_and_restores_the_terminal() {
-    let (status, out) = run_and_quit("q", |out, _| {
-        out.writer.write_all(b"q").expect("press q");
-        out.writer.flush().expect("press q");
+    let (status, out) = run_and_quit("q", |out, _| out.press(b"q"));
+    assert!(
+        status.success(),
+        "exited with {status}; output ends with:\n{}",
+        out.tail()
+    );
+}
+
+/// p opens Preferences in place of the boxes, Esc brings the boxes back, and
+/// q still quits.
+#[test]
+fn opens_and_closes_preferences_then_quits() {
+    let (status, out) = run_and_quit("p, Esc, then q", |out, _| {
+        out.press(b"p");
+        out.wait_for(PAGE_MARKER, 0, "Preferences page after p");
+        let boxes = count(&out.bytes, FRAME_MARKER);
+        out.press(b"\x1b");
+        out.wait_for(FRAME_MARKER, boxes, "monitor after Esc");
+        out.press(b"q");
     });
     assert!(
         status.success(),

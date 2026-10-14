@@ -1,18 +1,18 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 
+use super::style;
 use crate::app::App;
+use crate::i18n::{number, t, tf};
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let (rx, tx) = app.network_rate;
     let net_lines = vec![
-        Line::from(format!("RX: {:.1} KB/s", rx / 1024.0)),
-        Line::from(format!("TX: {:.1} KB/s", tx / 1024.0)),
-        Line::from("q or Ctrl+C to quit"),
+        Line::from(tf("rx_rate", &[("rate", &number(rx / 1024.0, 1))])),
+        Line::from(tf("tx_rate", &[("rate", &number(tx / 1024.0, 1))])),
     ];
-    let net_block =
-        Paragraph::new(net_lines).block(Block::default().title("Network").borders(Borders::ALL));
+    let net_block = Paragraph::new(net_lines).block(style::block(t("network")));
     frame.render_widget(net_block, area);
 }
