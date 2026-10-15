@@ -128,7 +128,7 @@ jobs:
       # audit-check runs the cargo-audit it finds on PATH and only compiles
       # one from source (about six minutes) when there is none. This one is
       # the prebuilt RustSec binary, checked against a pinned SHA-256.
-      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-audit
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
