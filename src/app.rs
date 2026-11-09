@@ -67,13 +67,16 @@ pub struct App {
 
 impl App {
     fn new(prefs: Preferences, prefs_path: Option<PathBuf>, status: Option<Status>) -> Self {
-        let mut system = System::new_all();
+        // sysinfo 0.40's constructors only fail on platforms Collector does
+        // not build for (iOS networks), so these never panic.
+        let mut system = System::new_all().expect("sysinfo supports this platform");
         system.refresh_all();
 
-        let mut disks = Disks::new_with_refreshed_list();
+        let mut disks = Disks::new_with_refreshed_list().expect("sysinfo supports this platform");
         disks.refresh(true);
 
-        let mut networks = Networks::new_with_refreshed_list();
+        let mut networks =
+            Networks::new_with_refreshed_list().expect("sysinfo supports this platform");
         networks.refresh(true);
 
         Self {
@@ -96,9 +99,9 @@ impl App {
     #[cfg(test)]
     pub fn empty() -> Self {
         Self {
-            system: System::new(),
-            disks: Disks::new(),
-            networks: Networks::new(),
+            system: System::new().expect("sysinfo supports this platform"),
+            disks: Disks::new().expect("sysinfo supports this platform"),
+            networks: Networks::new().expect("sysinfo supports this platform"),
             network_rate: (0.0, 0.0),
             last_tick: Instant::now(),
             prefs: Preferences::default(),
@@ -125,7 +128,7 @@ impl App {
         let (rx, tx) = self
             .networks
             .iter()
-            .filter(|(interface, _)| !is_loopback(interface))
+            .filter(|(interface, _)| !interface.to_str().is_some_and(is_loopback))
             .fold((0, 0), |(rx, tx), (_, data)| {
                 (rx + data.received(), tx + data.transmitted())
             });
@@ -348,7 +351,7 @@ fn per_second(bytes: u64, elapsed: Duration) -> f64 {
 }
 
 /// Loopback traffic never leaves the machine, so it stays out of the rates.
-/// sysinfo 0.39 has no loopback flag, so this goes by name: `lo` on Linux,
+/// sysinfo 0.40 has no loopback flag, so this goes by name: `lo` on Linux,
 /// `lo0` on macOS, `Loopback Pseudo-Interface 1` on Windows (where sysinfo
 /// already leaves it out, as it has no hardware address).
 fn is_loopback(interface: &str) -> bool {

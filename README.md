@@ -105,7 +105,7 @@ cd Collector
 cargo build --release --locked
 ```
 
-Requires Rust 1.95 or newer. For development, `cargo run --profile fast` gives
+Requires Rust 1.99 or newer. For development, `cargo run --profile fast` gives
 release-level speed with fast rebuilds.
 
 ### Platforms
