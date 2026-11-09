@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Project-Colony/Collector/compare/v0.3.0...v0.3.1) (2026-11-09)
+
+
+### Fixes
+
+* **deps:** update dependencies and Rust to 1.99 ([#21](https://github.com/Project-Colony/Collector/issues/21)) ([25d6f3c](https://github.com/Project-Colony/Collector/commit/25d6f3c4ac8924f4125e9abb2da19431d3b404e0))
+
 ## [0.3.0](https://github.com/Project-Colony/Collector/compare/v0.2.1...v0.3.0) (2026-10-14)
 
 
