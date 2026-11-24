@@ -5,16 +5,16 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Terminal system monitor: CPU, memory, disks, network and processes"
 repository = "https://github.com/Project-Colony/Collector"
-# The Colony-wide floor, above sysinfo 0.40.1's own (1.95). CI builds on it
+# The Colony-wide floor, above sysinfo 0.40.4's own (1.95). CI builds on it
 # (the msrv job), so the promise is checked rather than guessed.
-rust-version = "1.99"
+rust-version = "1.100"
 
 [dependencies]
 ratatui = "0.30.2"
 crossterm = "0.29.0"
 # No default features: they add `component` and `user`, which Collector does
 # not use (on Windows, `component` brings in WMI and COM).
-sysinfo = { version = "0.40.1", default-features = false, features = ["system", "disk", "network"] }
+sysinfo = { version = "0.40.4", default-features = false, features = ["system", "disk", "network"] }
 # The system language, for English or French. No dependencies of its own on
 # Linux, Windows or macOS.
 sys-locale = "0.3.2"
